@@ -1,14 +1,9 @@
 import discord
 from discord.ext import commands
-import yaml
 import time
 from typing import Optional, Dict, List
 
-CONFIG_PATH = 'data/config.yaml'
-
-def load_config():
-    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-        return yaml.safe_load(f)
+from utils.config import load_config
 
 class LoggingSystem(commands.Cog):
     def __init__(self, bot: commands.Bot):

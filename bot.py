@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 import os
 import asyncio
 from utils.db import init_db
-from cogs.rep import RepTOSView, ReviewButtonView
+from views.review import ReviewButtonView
+from views.tos import RepTOSView
 
 # Load environment variables from .env
 load_dotenv()
@@ -56,8 +57,9 @@ async def main():
     Main entrypoint for loading cogs and starting the bot.
     """
     async with bot:
-        await bot.load_extension("cogs.logging")
-        await bot.load_extension("cogs.rep")
+        await bot.load_extension("cogs.logging_system")
+        await bot.load_extension("cogs.reviews")
+        await bot.load_extension("cogs.admin")
         await bot.start(os.getenv("DISCORD_TOKEN"))
 
 if __name__ == "__main__":
