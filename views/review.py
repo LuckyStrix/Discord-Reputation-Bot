@@ -13,6 +13,28 @@ from utils.formatting import generate_star_rating, review_stars
 from utils.messages import load_rep_messages
 
 
+def is_thread_closed(thread: discord.abc.GuildChannel) -> bool:
+    """
+    True if the post has been closed. Buttons in locked/archived threads still
+    fire interactions, so every review/close action must check this.
+    """
+    if getattr(thread, "locked", False) or getattr(thread, "archived", False):
+        return True
+    info = db.get_thread_info(thread.id)
+    return bool(info and (info["locked"] or info["archived"]))
+
+
+async def _reject_if_not_open_thread(interaction: discord.Interaction) -> bool:
+    """Reply and return True if this interaction isn't in an open forum post."""
+    if not isinstance(interaction.channel, discord.Thread):
+        await interaction.response.send_message("❌ This only works inside a forum post.", ephemeral=True)
+        return True
+    if is_thread_closed(interaction.channel):
+        await interaction.response.send_message("🔒 This post is closed.", ephemeral=True)
+        return True
+    return False
+
+
 class AutoCloseView(discord.ui.View):
     def __init__(self, thread: discord.Thread = None):
         super().__init__(timeout=None)
@@ -84,6 +106,10 @@ class ReviewModal(discord.ui.Modal):
         self.add_item(self.notes)
     
     async def on_submit(self, interaction: discord.Interaction):
+        # The post may have been closed while the modal was open
+        if is_thread_closed(self.thread):
+            return await interaction.response.send_message("🔒 This post is closed.", ephemeral=True)
+
         try:
             rating_value = int(self.rating.value)
             if not (1 <= rating_value <= 10):
@@ -394,6 +420,8 @@ class ReviewButtonView(discord.ui.View):
 
     @discord.ui.button(custom_id="leave_review", label="⭐ Leave a Review", style=discord.ButtonStyle.primary)
     async def leave_review(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if await _reject_if_not_open_thread(interaction):
+            return
         thread: discord.Thread = interaction.channel
         op_id = thread.owner_id
 
@@ -426,7 +454,9 @@ class ReviewButtonView(discord.ui.View):
 
     @discord.ui.button(custom_id="close_post", label="Close Post", style=discord.ButtonStyle.secondary)
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
-        thread = interaction.channel  # type: discord.Thread
+        if await _reject_if_not_open_thread(interaction):
+            return
+        thread: discord.Thread = interaction.channel
         op_id = thread.owner_id
         
         # Check if user is OP or admin

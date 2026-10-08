@@ -8,7 +8,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from utils import db
-from utils.checks import is_admin
+from utils.checks import admin_only
 from utils.config import load_config
 from utils.formatting import generate_star_rating, review_stars, star_bar
 from utils.presence import apply_bot_status
@@ -214,6 +214,7 @@ class Reviews(commands.Cog):
                 pass
 
     @app_commands.command(name="reviews", description="Check a user's reviews and rating.")
+    @app_commands.guild_only()
     @app_commands.describe(user="The user to check reviews for.")
     async def reviews_lookup(self, interaction: discord.Interaction, user: discord.Member):
         avg_rating, total_reviews, latest_reviews = db.get_user_reviews(user.id)
@@ -250,6 +251,7 @@ class Reviews(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="leaderboard", description="Show the top 10 users by rating.")
+    @app_commands.guild_only()
     async def review_leaderboard(self, interaction: discord.Interaction):
         top = db.get_top_rated_users(limit=10)
         embed = discord.Embed(
@@ -273,14 +275,9 @@ class Reviews(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=False)
 
     @app_commands.command(name="send_review_ui", description="Send the rate/close interface to the current thread (admin only).")
+    @app_commands.guild_only()
+    @admin_only()
     async def send_review_ui(self, interaction: discord.Interaction):
-        # Check if user is admin
-        if not is_admin(interaction.user):
-            await interaction.response.send_message(
-                "❌ Only admins can use this command.", ephemeral=True
-            )
-            return
-        
         # Check if command is used in a thread
         if not isinstance(interaction.channel, discord.Thread):
             await interaction.response.send_message(

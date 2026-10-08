@@ -5,7 +5,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from utils.checks import is_admin
+from utils.checks import admin_only, is_admin
 from utils.config import load_config, save_config
 from views.settings import SettingsView
 
@@ -13,7 +13,9 @@ from views.settings import SettingsView
 class Admin(commands.Cog):
     """Configuration and admin-management slash commands."""
 
-    @app_commands.command(name="channel_set", description="Add a forum channel for tracking reps.")
+    @app_commands.command(name="channel_set", description="Add a forum channel for tracking reps (admin only).")
+    @app_commands.guild_only()
+    @admin_only()
     @app_commands.describe(channel="Forum channel to activate rep tracking on.")
     async def channel_set(self, interaction: discord.Interaction, channel: discord.ForumChannel):
         config = load_config()
@@ -30,7 +32,9 @@ class Admin(commands.Cog):
                 "This channel is already tracked.", ephemeral=True
             )
 
-    @app_commands.command(name="log", description="Set a channel for review logs.")
+    @app_commands.command(name="log", description="Set a channel for review logs (admin only).")
+    @app_commands.guild_only()
+    @admin_only()
     @app_commands.describe(channel="The channel to send review logs to.")
     async def log_set(self, interaction: discord.Interaction, channel: discord.TextChannel):
         config = load_config()
@@ -44,15 +48,10 @@ class Admin(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="admin_add", description="Add a user as admin (admin only).")
+    @app_commands.guild_only()
+    @admin_only()
     @app_commands.describe(user="The user to add as admin.")
     async def admin_add(self, interaction: discord.Interaction, user: discord.Member):
-        # Check if user is already an admin
-        if not is_admin(interaction.user):
-            await interaction.response.send_message(
-                "❌ Only admins can add other admins.", ephemeral=True
-            )
-            return
-            
         config = load_config()
         admin_ids = config.get("admin_ids", [])
         
@@ -77,15 +76,10 @@ class Admin(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="admin_remove", description="Remove a user from admin (admin only).")
+    @app_commands.guild_only()
+    @admin_only()
     @app_commands.describe(user="The user to remove from admin.")
     async def admin_remove(self, interaction: discord.Interaction, user: discord.Member):
-        # Check if user is admin
-        if not is_admin(interaction.user):
-            await interaction.response.send_message(
-                "❌ Only admins can remove other admins.", ephemeral=True
-            )
-            return
-            
         config = load_config()
         admin_ids = config.get("admin_ids", [])
         
@@ -117,14 +111,9 @@ class Admin(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="admin_list", description="List all admins (admin only).")
+    @app_commands.guild_only()
+    @admin_only()
     async def admin_list(self, interaction: discord.Interaction):
-        # Check if user is admin
-        if not is_admin(interaction.user):
-            await interaction.response.send_message(
-                "❌ Only admins can view the admin list.", ephemeral=True
-            )
-            return
-        
         config = load_config()
         admin_ids = config.get("admin_ids", [])
         admin_role_ids = config.get("admin_role_ids", [])
@@ -173,15 +162,10 @@ class Admin(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="admin_role_add", description="Add a role as admin (admin only).")
+    @app_commands.guild_only()
+    @admin_only()
     @app_commands.describe(role="The role to add as admin.")
     async def admin_role_add(self, interaction: discord.Interaction, role: discord.Role):
-        # Check if user is admin
-        if not is_admin(interaction.user):
-            await interaction.response.send_message(
-                "❌ Only admins can add admin roles.", ephemeral=True
-            )
-            return
-            
         config = load_config()
         admin_role_ids = config.get("admin_role_ids", [])
         
@@ -206,15 +190,10 @@ class Admin(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="admin_role_remove", description="Remove a role from admin (admin only).")
+    @app_commands.guild_only()
+    @admin_only()
     @app_commands.describe(role="The role to remove from admin.")
     async def admin_role_remove(self, interaction: discord.Interaction, role: discord.Role):
-        # Check if user is admin
-        if not is_admin(interaction.user):
-            await interaction.response.send_message(
-                "❌ Only admins can remove admin roles.", ephemeral=True
-            )
-            return
-            
         config = load_config()
         admin_role_ids = config.get("admin_role_ids", [])
         
@@ -239,15 +218,10 @@ class Admin(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="auto_close_toggle", description="Toggle the auto-close feature on/off (admin only).")
+    @app_commands.guild_only()
+    @admin_only()
     @app_commands.describe(enabled="Enable or disable auto-close feature")
     async def auto_close_toggle(self, interaction: discord.Interaction, enabled: bool = None):
-        # Check if user is admin
-        if not is_admin(interaction.user):
-            await interaction.response.send_message(
-                "❌ Only admins can toggle auto-close settings.", ephemeral=True
-            )
-            return
-        
         config = load_config()
         
         # If no parameter provided, show current status
@@ -317,15 +291,10 @@ class Admin(commands.Cog):
         print(f"[AUTO-CLOSE] {interaction.user} ({'enabled' if enabled else 'disabled'}) auto-close feature")
 
     @app_commands.command(name="auto_close_hours", description="Set the number of hours before auto-close (admin only).")
+    @app_commands.guild_only()
+    @admin_only()
     @app_commands.describe(hours="Number of hours to wait before auto-closing threads (1-168)")
     async def auto_close_hours(self, interaction: discord.Interaction, hours: int):
-        # Check if user is admin
-        if not is_admin(interaction.user):
-            await interaction.response.send_message(
-                "❌ Only admins can modify auto-close settings.", ephemeral=True
-            )
-            return
-        
         # Validate hours (1 hour to 1 week)
         if not (1 <= hours <= 168):
             await interaction.response.send_message(
@@ -371,14 +340,9 @@ class Admin(commands.Cog):
         print(f"[AUTO-CLOSE] {interaction.user} changed auto-close timer to {hours} hours")
 
     @app_commands.command(name="settings", description="View and modify bot settings through an interactive interface (admin only).")
+    @app_commands.guild_only()
+    @admin_only()
     async def settings_command(self, interaction: discord.Interaction):
-        # Check if user is admin
-        if not is_admin(interaction.user):
-            await interaction.response.send_message(
-                "❌ Only admins can access bot settings.", ephemeral=True
-            )
-            return
-
         # Create the settings view and embed
         view = SettingsView(interaction)
         embed = await view.create_main_settings_embed(interaction)
