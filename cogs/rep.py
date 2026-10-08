@@ -224,14 +224,6 @@ class SettingsView(discord.ui.View):
         embed = await self.create_admin_settings_embed(interaction)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="🌐 Server Settings", style=discord.ButtonStyle.secondary, row=1)
-    async def server_settings(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not is_admin(interaction.user):
-            return await interaction.response.send_message("❌ Only admins can modify settings.", ephemeral=True)
-        
-        modal = ServerSettingsModal()
-        await interaction.response.send_modal(modal)
-
     @discord.ui.button(label="🤖 Bot Status", style=discord.ButtonStyle.secondary, row=1)
     async def bot_status_settings(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not is_admin(interaction.user):
@@ -288,14 +280,6 @@ class SettingsView(discord.ui.View):
         embed.add_field(
             name="👑 Admin Settings",
             value=f"**Users:** {admin_ids}\n**Roles:** {admin_roles}",
-            inline=True
-        )
-
-        # Server Settings
-        server_name = config.get("server_name", "Not set")
-        embed.add_field(
-            name="🌐 Server Info",
-            value=f"**Name:** {server_name[:20]}{'...' if len(server_name) > 20 else ''}",
             inline=True
         )
 
@@ -528,65 +512,6 @@ class TOSSettingsModal(discord.ui.Modal):
                 log_embed = discord.Embed(
                     title="📋 TOS Settings Modified",
                     description=f"{interaction.user.mention} updated TOS messages",
-                    color=discord.Color.blue()
-                )
-                log_embed.timestamp = datetime.now()
-                await log_ch.send(embed=log_embed)
-
-class ServerSettingsModal(discord.ui.Modal):
-    def __init__(self):
-        super().__init__(title="Server Settings")
-        
-        config = load_config()
-        
-        self.server_name = discord.ui.TextInput(
-            label="Server Display Name",
-            placeholder="Name shown on web dashboard",
-            default=config.get("server_name", ""),
-            max_length=100,
-            required=True
-        )
-        self.add_item(self.server_name)
-        
-        self.server_invite = discord.ui.TextInput(
-            label="Server Invite Link",
-            placeholder="https://discord.gg/your-invite",
-            default=config.get("server_invite", ""),
-            max_length=200,
-            required=False
-        )
-        self.add_item(self.server_invite)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        config = load_config()
-        
-        # Save changes
-        config["server_name"] = self.server_name.value.strip()
-        if self.server_invite.value.strip():
-            config["server_invite"] = self.server_invite.value.strip()
-
-        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-            yaml.dump(config, f)
-
-        embed = discord.Embed(
-            title="✅ Server Settings Updated",
-            description="Server information has been updated",
-            color=discord.Color.green()
-        )
-        embed.add_field(name="Server Name", value=self.server_name.value, inline=False)
-        if self.server_invite.value.strip():
-            embed.add_field(name="Invite Link", value=self.server_invite.value, inline=False)
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-        # Log the changes
-        log_ch_id = config.get("log_channel")
-        if log_ch_id:
-            log_ch = interaction.client.get_channel(log_ch_id)
-            if log_ch:
-                log_embed = discord.Embed(
-                    title="🌐 Server Settings Modified",
-                    description=f"{interaction.user.mention} updated server information",
                     color=discord.Color.blue()
                 )
                 log_embed.timestamp = datetime.now()

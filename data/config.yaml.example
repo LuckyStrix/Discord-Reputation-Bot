@@ -67,17 +67,6 @@ admin_close_confirmation: true  # Set to false to allow instant admin closes wit
 # 4. Admins can modify these settings using /settings or /auto_close_toggle commands
 
 # ═══════════════════════════════════════════════════════════
-#                  WEB DASHBOARD SETTINGS
-# ═══════════════════════════════════════════════════════════
-
-# Server Display Name - Shown on the web dashboard homepage
-server_name: "Your Discord Server Name"
-
-# Server Invite Link - Used for "Join Server" buttons on website
-# Generate a permanent invite link from your Discord server
-server_invite: "https://discord.gg/your-invite-code"
-
-# ═══════════════════════════════════════════════════════════
 #                 FUN ZERO-REP MESSAGES
 # ═══════════════════════════════════════════════════════════
 
@@ -183,10 +172,9 @@ bot_status:
 # ✅ 4. Set the log channel ID
 # ✅ 5. Added your user ID to admin_ids
 # ✅ 6. Updated the TOS channel reference in tos_message
-# ✅ 7. Set your server name and invite link
-# ✅ 8. Configured auto-close settings (NEW in V3.1)
-# ✅ 9. Invited the bot to your server with proper permissions
-# ✅ 10. Run !sync command after starting bot to register slash commands
+# ✅ 7. Configured auto-close settings (NEW in V3.1)
+# ✅ 8. Invited the bot to your server with proper permissions
+# ✅ 9. Run !sync command after starting bot to register slash commands
 # 
 # Required bot permissions:
 # - Send Messages, Embed Links, Use Slash Commands

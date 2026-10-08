@@ -3,14 +3,6 @@ discord.py>=2.3.2
 PyYAML
 python-dotenv
 
-# Web Dashboard Requirements
-Flask==2.3.3
-MarkupSafe==3.0.2
-Werkzeug==2.3.8
-Jinja2==3.1.6
-click==8.1.8
-itsdangerous==2.2.0
-
 # Additional Dependencies (shared)
 aiohttp==3.12.15
 aiosignal==1.4.0
@@ -20,4 +12,3 @@ charset-normalizer==3.4.3
 frozenlist==1.7.0
 multidict==6.6.4
 yarl==1.20.1
-requests>=2.31.0
