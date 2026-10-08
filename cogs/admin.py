@@ -4,10 +4,13 @@ from discord import app_commands
 from discord.ext import commands
 
 from utils.checks import admin_only, is_admin
-from utils.config import load_config, save_config
+from utils.config import list_append, list_remove, load_config, save_config
 from utils.formatting import capped_lines
 from utils.threads import send_log
 from views.settings import SettingsView
+
+
+ADMIN_LIST_INTRO = "Server administrators are always admins. Also configured:"
 
 
 async def log_admin_action(interaction: discord.Interaction, title: str, description: str,
@@ -32,7 +35,7 @@ class Admin(commands.Cog):
         if channel.id in config["forums"]:
             return await interaction.response.send_message("This channel is already tracked.", ephemeral=True)
 
-        config["forums"].append(channel.id)
+        list_append(config, "forums", channel.id)
         save_config(config)
         await interaction.response.send_message(f"✅ Channel {channel.mention} added to rep tracking.", ephemeral=True)
         await log_admin_action(interaction, "📁 Forum Added", f"added {channel.mention} to rep tracking")
@@ -83,7 +86,7 @@ class Admin(commands.Cog):
                 f"{user.mention} is already in the admin list.", ephemeral=True
             )
 
-        config["admin_ids"].append(user.id)
+        list_append(config, "admin_ids", user.id)
         save_config(config)
 
         embed = discord.Embed(
@@ -115,7 +118,7 @@ class Admin(commands.Cog):
                 "❌ Cannot remove yourself as the last admin.", ephemeral=True
             )
 
-        admin_ids.remove(user.id)
+        list_remove(config, "admin_ids", user.id)
         save_config(config)
 
         description = f"{user.mention} has been removed from the admin list."
@@ -139,12 +142,16 @@ class Admin(commands.Cog):
 
         embed = discord.Embed(
             title="👑 Admin List",
-            description="Server administrators are always admins. Also configured:",
+            description=ADMIN_LIST_INTRO if config["guild_id"] else "Configured admins:",
             color=discord.Color.purple()
         )
 
         if not admin_ids and not admin_role_ids:
-            embed.description = "Only server administrators are admins; no other users or roles are configured."
+            embed.description = (
+                "Only server administrators are admins; no other users or roles are configured."
+                if config["guild_id"] else
+                "⚠️ No admins configured, and guild_id isn't set. Add admin_ids or guild_id to data/config.yaml."
+            )
 
         if admin_ids:
             lines = []
@@ -180,7 +187,7 @@ class Admin(commands.Cog):
                 f"{role.mention} is already an admin role.", ephemeral=True
             )
 
-        config["admin_role_ids"].append(role.id)
+        list_append(config, "admin_role_ids", role.id)
         save_config(config)
 
         embed = discord.Embed(
@@ -203,7 +210,7 @@ class Admin(commands.Cog):
                 f"{role.mention} is not an admin role.", ephemeral=True
             )
 
-        config["admin_role_ids"].remove(role.id)
+        list_remove(config, "admin_role_ids", role.id)
         save_config(config)
 
         embed = discord.Embed(

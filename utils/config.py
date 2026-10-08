@@ -6,6 +6,8 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
+from ruamel.yaml.error import CommentMark
+from ruamel.yaml.tokens import CommentToken
 
 # Resolve paths from the project root so the bot works no matter which
 # directory it is started from.
@@ -16,6 +18,7 @@ CONFIG_PATH = PROJECT_ROOT / 'data' / 'config.yaml'
 _yaml = YAML()
 _yaml.preserve_quotes = True
 _yaml.width = 4096  # don't re-wrap long TOS text
+_yaml.indent(mapping=2, sequence=4, offset=2)  # match the example file's list indentation
 
 ID_LIST_KEYS = ("forums", "admin_ids", "admin_role_ids")
 DEFAULTS = {
@@ -44,12 +47,90 @@ def _to_int(value) -> int | None:
         return None
 
 
+_TRUE_WORDS = ("true", "yes", "y", "on")
+_FALSE_WORDS = ("false", "no", "n", "off")
+
+
 def _to_bool(value, default: bool) -> bool:
     if isinstance(value, bool):
         return value
-    if isinstance(value, str) and value.strip().lower() in ("true", "false"):
-        return value.strip().lower() == "true"
+    if isinstance(value, str):
+        # YAML 1.2 (ruamel) reads yes/no/on/off as text; older configs used them as booleans
+        word = value.strip().lower()
+        if word in _TRUE_WORDS:
+            return True
+        if word in _FALSE_WORDS:
+            return False
     return default
+
+
+# ─── Comment-preserving list edits ──────────────────────────────────────────
+# ruamel attaches the blank lines and comments that follow a list (which
+# belong to the next key) to the list's last item. Plain append/remove would
+# leave them in the middle of the list or delete them, so these helpers move
+# that trailing text along with the end of the list.
+
+def _split_trailing(token) -> tuple[str, str]:
+    """Split a list item's comment into (its own end-of-line part, text that follows the list)."""
+    value = token.value
+    end_of_line = value[:value.index("\n") + 1] if "\n" in value else value
+    return end_of_line, value[len(end_of_line):]
+
+
+def _take_trailing(seq: CommentedSeq) -> str:
+    """Detach the text following the list from its last item and return it."""
+    if not seq:
+        return ""
+    last = len(seq) - 1
+    entry = seq.ca.items.get(last)
+    if not entry or entry[0] is None:
+        return ""
+    end_of_line, rest = _split_trailing(entry[0])
+    if end_of_line.strip():
+        entry[0].value = end_of_line
+    else:
+        del seq.ca.items[last]
+    return rest
+
+
+def _give_trailing(parent: CommentedMap, key: str, seq: CommentedSeq, text: str) -> None:
+    """Re-attach text that follows the list to its (new) last item, or to the key if it is empty."""
+    if not text:
+        return
+    if seq:
+        last = len(seq) - 1
+        entry = seq.ca.items.get(last)
+        if entry and entry[0] is not None:
+            entry[0].value += text
+        else:
+            seq.yaml_add_eol_comment("x", last)
+            seq.ca.items[last][0].value = "\n" + text
+    else:
+        # An empty list is written as `key: []`, which can't carry a comment
+        # after it, so the text goes before the next key instead
+        keys = list(parent)
+        position = keys.index(key)
+        if position + 1 >= len(keys):
+            return
+        token = CommentToken(text, CommentMark(0), None)
+        slot = parent.ca.items.setdefault(keys[position + 1], [None, None, None, None])
+        slot[1] = [token] + (slot[1] or [])
+
+
+def list_append(config: CommentedMap, key: str, value) -> None:
+    """Append to a top-level list in the config without displacing comments."""
+    seq = config[key]
+    trailing = _take_trailing(seq)
+    seq.append(value)
+    _give_trailing(config, key, seq, trailing)
+
+
+def list_remove(config: CommentedMap, key: str, value) -> None:
+    """Remove from a top-level list in the config without losing comments."""
+    seq = config[key]
+    trailing = _take_trailing(seq)
+    del seq[seq.index(value)]  # ruamel shifts the remaining items' comments
+    _give_trailing(config, key, seq, trailing)
 
 
 def _clamp_int(value, default: int, low: int, high: int) -> int:

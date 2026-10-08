@@ -58,7 +58,13 @@ async def close_thread(client: discord.Client, thread: discord.Thread, status: s
         except discord.HTTPException as e:
             print(f"[WARN] Could not post close notice in {thread.id}: {e}")
 
-    await thread.edit(archived=True)
+    # The post is closed once it's locked; failing to archive it only means
+    # it stays in the active list, so don't report the close as failed
+    try:
+        await thread.edit(archived=True)
+    except discord.HTTPException as e:
+        print(f"[WARN] Locked thread {thread.id} but could not archive it: {e}")
+
     await update_thread_log(
         client, thread,
         field_updates={"Thread Status": f"{status} at <t:{int(time.time())}:T>"}

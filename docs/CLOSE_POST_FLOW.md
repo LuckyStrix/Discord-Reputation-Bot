@@ -4,7 +4,7 @@ Closing a post locks the thread, posts the closing message, archives the thread,
 
 A post counts as closed when it is **locked**. Discord also archives quiet posts by itself; those stay usable. If a moderator unlocks a closed post, its buttons work again.
 
-Buttons in a closed post reply "🔒 This post is closed." and do nothing else.
+The review, close and keep-open buttons in a closed post reply "🔒 This post is closed." and do nothing else.
 
 ## Close Post button
 

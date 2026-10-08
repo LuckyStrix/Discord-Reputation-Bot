@@ -1,6 +1,6 @@
 # Command Reference
 
-All slash commands work only inside a server. Admin commands reply with "❌ Only admins can use this command." to anyone else. See [ADMIN_GUIDE.md](ADMIN_GUIDE.md) for who counts as an admin.
+All slash commands work only inside the server set by `guild_id` (elsewhere they reply "❌ This bot isn't set up for this server."). Admin commands reply with "❌ Only admins can use this command." to anyone else. See [ADMIN_GUIDE.md](ADMIN_GUIDE.md) for who counts as an admin.
 
 ## Public commands
 
@@ -77,4 +77,4 @@ Each form removes the other's registrations, so commands never appear twice.
 | Close Post | Review panel | Post owner or admins ([details](CLOSE_POST_FLOW.md)) |
 | I have multiple items - Keep thread open | Auto-close notice | Post owner |
 
-Buttons keep working after the bot restarts. In closed posts they reply "🔒 This post is closed."
+Buttons keep working after the bot restarts. In closed posts the review, close and keep-open buttons reply "🔒 This post is closed."; an answered or expired TOS prompt replies "⌛ This prompt has expired."

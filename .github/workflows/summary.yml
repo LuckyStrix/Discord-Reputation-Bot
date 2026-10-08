@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Run AI inference
         id: inference
+        # Requires GitHub Models to be enabled for the repository
+        continue-on-error: true
         uses: actions/ai-inference@v1
         with:
           prompt: |
@@ -27,6 +29,7 @@ jobs:
       # The response is derived from untrusted issue text, so it is passed
       # through an environment variable and never interpolated into the script.
       - name: Comment with AI summary
+        if: steps.inference.outcome == 'success' && steps.inference.outputs.response != ''
         run: gh issue comment "$ISSUE_NUMBER" --repo "$REPO" --body "$RESPONSE"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

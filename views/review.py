@@ -8,7 +8,7 @@ import discord
 from utils import db
 from utils.checks import is_admin
 from utils.config import load_config
-from utils.formatting import generate_star_rating, review_stars
+from utils.formatting import generate_star_rating, review_stars, safe_inline
 from utils.messages import load_rep_messages
 from utils.interactions import SafeModal, SafeView
 from utils.threads import close_thread_for, send_log, update_thread_log
@@ -28,8 +28,10 @@ def is_thread_closed(thread: discord.abc.GuildChannel) -> bool:
     those must stay usable. The database copy is kept in sync by
     on_thread_update, so a post a moderator unlocks becomes usable again.
     """
-    if getattr(thread, "locked", False):
-        return True
+    locked = getattr(thread, "locked", None)
+    if isinstance(locked, bool):
+        # Discord's live state, sent with every interaction: trust it
+        return locked
     info = db.get_thread_info(thread.id)
     return bool(info and info["locked"])
 
@@ -90,7 +92,7 @@ class AutoCloseView(SafeView):
 
         log_embed = discord.Embed(
             title="🔓 Auto-Close Cancelled",
-            description=f"{interaction.user.mention} cancelled auto-close for [{thread.name}]({thread.jump_url})",
+            description=f"{interaction.user.mention} cancelled auto-close for {thread.mention}",
             color=discord.Color.green()
         )
         log_embed.add_field(name="Thread Owner", value=f"<@{thread.owner_id}>", inline=True)
@@ -126,8 +128,9 @@ class ReviewModal(SafeModal):
         self.add_item(self.notes)
 
     async def on_submit(self, interaction: discord.Interaction):
-        # The post may have been closed while the modal was open
-        if is_thread_closed(self.thread):
+        # The post may have been closed while the modal was open; the
+        # submit interaction carries the thread's current state
+        if is_thread_closed(interaction.channel or self.thread):
             return await interaction.response.send_message("🔒 This post is closed.", ephemeral=True)
 
         try:
@@ -166,8 +169,7 @@ class ReviewModal(SafeModal):
             color=discord.Color.green()
         )
         if notes_value:
-            preview = notes_value[:100] + "..." if len(notes_value) > 100 else notes_value
-            embed.add_field(name="Review Notes", value=preview, inline=False)
+            embed.add_field(name="Review Notes", value=safe_inline(notes_value, 100), inline=False)
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -177,9 +179,10 @@ class ReviewModal(SafeModal):
         auto_close_hours = config["auto_close_hours"]
         close_time = time.time() + auto_close_hours * 60 * 60
 
+        # Posts made before the bot joined have no row yet; the log and auto-close need one
+        _ensure_thread_tracked(self.thread)
         scheduled = False
         if config["auto_close_enabled"]:
-            _ensure_thread_tracked(self.thread)
             scheduled = db.schedule_thread_auto_close(self.thread.id, close_time)
 
         if scheduled:
@@ -201,7 +204,7 @@ class ReviewModal(SafeModal):
             log_embed = discord.Embed(
                 title="⏰ Auto-Close Scheduled",
                 description=(
-                    f"Thread [{self.thread.name}]({self.thread.jump_url}) "
+                    f"Thread {self.thread.mention} "
                     f"scheduled to auto-close <t:{int(close_time)}:R>"
                 ),
                 color=discord.Color.orange()
@@ -254,7 +257,7 @@ class CloseConfirmationModal(SafeModal):
             return
 
         # Someone may have closed it while the modal was open
-        if is_thread_closed(self.thread):
+        if is_thread_closed(interaction.channel or self.thread):
             return await interaction.response.send_message("🔒 This post is already closed.", ephemeral=True)
 
         await close_thread_for(
@@ -285,7 +288,7 @@ class AdminCloseConfirmationModal(SafeModal):
             )
             return
 
-        if is_thread_closed(self.thread):
+        if is_thread_closed(interaction.channel or self.thread):
             return await interaction.response.send_message("🔒 This post is already closed.", ephemeral=True)
 
         await admin_close(interaction, self.thread, self.admin_user)
@@ -303,7 +306,7 @@ async def admin_close(interaction: discord.Interaction, thread: discord.Thread, 
 
     log_embed = discord.Embed(
         title="🔒 Admin Force Close",
-        description=f"{admin_user.mention} force-closed thread [{thread.name}]({thread.jump_url})",
+        description=f"{admin_user.mention} force-closed thread {thread.mention}",
         color=discord.Color.red()
     )
     log_embed.add_field(name="Thread Owner", value=f"<@{thread.owner_id}>", inline=True)
@@ -334,7 +337,7 @@ def build_review_panel(op_id: int) -> discord.Embed:
             pool = rep_msgs["neutral"]
 
         raw = random.choice(pool) if pool else ""
-        # A trailing .gif/.mp4/.webm URL is shown as the embed image
+        # A trailing image URL (see IMAGE_EXTENSIONS) is shown as the embed image
         parts = raw.rsplit(" ", 1)
         if len(parts) == 2 and parts[1].lower().endswith(IMAGE_EXTENSIONS):
             content, gif_url = parts[0], parts[1]
@@ -352,8 +355,7 @@ def build_review_panel(op_id: int) -> discord.Embed:
         for review in latest_reviews[:3]:
             reviews_text += f"**{review_stars(review['rating'])} {review['rating']}/10** by <@{review['giver_id']}>"
             if review['notes']:
-                notes_preview = review['notes'][:50] + "..." if len(review['notes']) > 50 else review['notes']
-                reviews_text += f"\n> {notes_preview}"
+                reviews_text += f"\n> {safe_inline(review['notes'], 50)}"
             reviews_text += "\n\n"
 
         embed.add_field(name="📝 Latest Reviews", value=reviews_text.strip(), inline=False)

@@ -50,6 +50,9 @@ class RepBot(commands.Bot):
         if config["guild_id"] is None:
             print("⚠️  guild_id is not set in data/config.yaml. Set it to your server's ID: until then "
                   "server administrators are not automatically bot admins and commands work in every server.")
+            if not config["admin_ids"] and not config["admin_role_ids"]:
+                print("⚠️  No admins are configured either, so nobody can use admin commands. "
+                      "Set guild_id (or admin_ids) in data/config.yaml and restart.")
 
         # Set the configured presence before connecting so it's sent on login
         activity, status = presence_from_config(config)
@@ -97,15 +100,21 @@ async def sync_commands(ctx: commands.Context, scope: str = "guild"):
     try:
         if scope == "global":
             synced = await bot.tree.sync()
+            note = ""
             if guild is not None:
                 await bot.http.bulk_upsert_guild_commands(app_id, guild.id, [])
-            await ctx.send(f"✅ Globally synced {len(synced)} slash commands. (May take up to 1 hour to appear)")
+            else:
+                note = " Per-server copies were not removed; run this inside the server if commands show twice."
+            await ctx.send(f"✅ Globally synced {len(synced)} slash commands. (May take up to 1 hour to appear){note}")
         else:
             if guild is None:
                 return await ctx.send("❌ Use `!sync` inside your server, or set guild_id in the config.")
             bot.tree.copy_global_to(guild=guild)
             synced = await bot.tree.sync(guild=guild)
-            await bot.http.bulk_upsert_global_commands(app_id, [])
+            # Clearing global commands would also remove them from other
+            # servers, which only makes sense when the bot is pinned to one
+            if home is not None:
+                await bot.http.bulk_upsert_global_commands(app_id, [])
             await ctx.send(f"✅ Synced {len(synced)} slash commands to the server.")
         print(f"✅ Synced {len(synced)} slash commands ({scope}).")
     except discord.HTTPException as e:

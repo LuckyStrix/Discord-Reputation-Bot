@@ -1,4 +1,7 @@
 """Shared display helpers."""
+import re
+
+import discord
 
 
 def star_bar(avg_rating: float) -> str:
@@ -36,3 +39,17 @@ def capped_lines(lines: list[str], limit: int = 1024) -> str:
             break
         shown.append(line)
     return "\n".join(shown) or "None"
+
+
+def safe_inline(text: str, limit: int) -> str:
+    """
+    Make user-written text safe to show inside the bot's embeds: one line,
+    shortened to `limit` characters, with markdown and link brackets escaped
+    so it can't fake extra review lines or hide a link behind other text.
+    """
+    text = " ".join(text.split())
+    if len(text) > limit:
+        text = text[:limit] + "..."
+    text = discord.utils.escape_markdown(text)
+    # escape_markdown handles some brackets itself; escape any it left alone
+    return re.sub(r"(?<!\\)([\[\]])", r"\\\1", text)

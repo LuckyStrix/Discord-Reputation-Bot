@@ -77,7 +77,7 @@ class LoggingSystem(commands.Cog):
         # Embed titles can't contain links, so the link goes in the description
         embed = discord.Embed(
             title=title or f"📋 Thread: {thread.name}"[:256],
-            description=description or f"[Open thread]({thread.jump_url}) • Created by <@{thread.owner_id}>",
+            description=description or f"{thread.mention} • Created by <@{thread.owner_id}>",
             color=color or discord.Color.blurple(),
             timestamp=discord.utils.utcnow()
         )
@@ -90,6 +90,10 @@ class LoggingSystem(commands.Cog):
             embed.add_field(name="Review Events", value=EMPTY_EVENTS, inline=False)
 
         msg = await log_ch.send(embed=embed)
+        if db.get_thread_info(thread.id) is None:
+            # Posts made before the bot joined have no row to remember the embed in
+            db.upsert_thread(thread.id, thread.parent_id, thread.guild.id, thread.name,
+                             thread.owner_id, thread.jump_url, thread.archived, thread.locked)
         db.set_thread_log_message(thread.id, msg.id)
         return msg
 

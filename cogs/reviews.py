@@ -9,7 +9,7 @@ from discord.ext import commands, tasks
 from utils import db
 from utils.checks import admin_only
 from utils.config import get_forum_ids, load_config
-from utils.formatting import generate_star_rating, review_stars, star_bar
+from utils.formatting import generate_star_rating, review_stars, safe_inline, star_bar
 from utils.threads import close_thread, send_log
 from views.review import AutoCloseView, ReviewButtonView, post_review_ui
 from views.tos import (RepTOSView, get_tos_timeout, pending_tos_timestamps,
@@ -84,7 +84,7 @@ class Reviews(commands.Cog):
 
         log_embed = discord.Embed(
             title="🤖 Thread Auto-Closed",
-            description=f"Thread [{thread.name}]({thread.jump_url}) was automatically closed",
+            description=f"Thread {thread.mention} was automatically closed",
             color=discord.Color.red()
         )
         log_embed.add_field(name="Thread Owner", value=f"<@{thread.owner_id}>", inline=True)
@@ -165,11 +165,13 @@ class Reviews(commands.Cog):
             print(f"[ERROR] on_thread_create: {e}")
 
     @commands.Cog.listener()
-    async def on_thread_update(self, before: discord.Thread, after: discord.Thread):
+    async def on_raw_thread_update(self, payload: discord.RawThreadUpdateEvent):
         # Keep the stored state in step with Discord, e.g. when a moderator
-        # reopens a post the bot closed
-        if (before.locked, before.archived) != (after.locked, after.archived):
-            db.set_thread_state(after.id, archived=after.archived, locked=after.locked)
+        # reopens a post the bot closed. The raw event is used because
+        # on_thread_update never fires for archived (uncached) threads.
+        metadata = payload.data.get("thread_metadata") or {}
+        if "locked" in metadata and "archived" in metadata:
+            db.set_thread_state(payload.thread_id, archived=metadata["archived"], locked=metadata["locked"])
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -214,8 +216,7 @@ class Reviews(commands.Cog):
                 for review in latest_reviews:
                     entry = f"**{review_stars(review['rating'])} {review['rating']}/10** by <@{review['giver_id']}>"
                     if review['notes']:
-                        notes_preview = review['notes'][:80] + "..." if len(review['notes']) > 80 else review['notes']
-                        entry += f"\n> {notes_preview}"
+                        entry += f"\n> {safe_inline(review['notes'], 80)}"
                     entries.append(entry)
                 embed.add_field(name="Latest Reviews", value="\n\n".join(entries), inline=False)
 

@@ -64,7 +64,8 @@ Discord-Reputation-Bot/
 │   ├── checks.py           # Admin permission checks
 │   ├── threads.py          # Shared close/log helpers
 │   ├── presence.py         # Bot status
-│   ├── formatting.py       # Star rendering
+│   ├── formatting.py       # Star rendering, safe display of user text
+│   ├── interactions.py     # Safe interaction replies and error reporting
 │   └── messages.py         # Review-panel flavour text
 ├── assets/rep_messages.txt # Flavour text by rating (good / neutral / bad)
 ├── data/

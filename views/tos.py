@@ -91,6 +91,7 @@ class RepTOSView(SafeView):
 
 async def expire_tos(client: discord.Client, thread_id: int) -> None:
     """Close a thread whose TOS prompt was never answered."""
+    owner_id = next((row["owner_id"] for row in db.get_pending_tos() if row["thread_id"] == thread_id), 0)
     if not db.resolve_pending_tos(thread_id):
         return  # Answered in the meantime
     pending_tos_timestamps.pop(thread_id, None)
@@ -112,7 +113,7 @@ async def expire_tos(client: discord.Client, thread_id: int) -> None:
         # Temporary Discord problem: keep the post gated and try again shortly
         print(f"[WARN] TOS timeout close failed for {thread_id} ({e}); retrying in {EXPIRY_RETRY_SECONDS}s")
         now = time.time()
-        db.add_pending_tos(thread_id, 0, now, now + EXPIRY_RETRY_SECONDS)
+        db.add_pending_tos(thread_id, owner_id, now, now + EXPIRY_RETRY_SECONDS)
         pending_tos_timestamps[thread_id] = now
         schedule_tos_expiry(client, thread_id, now + EXPIRY_RETRY_SECONDS)
         return

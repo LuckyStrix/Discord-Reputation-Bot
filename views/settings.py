@@ -148,7 +148,10 @@ class SettingsView(discord.ui.View):
 
         embed = discord.Embed(
             title="👑 Admin Settings",
-            description="Server administrators are always admins. Also configured:",
+            description=(
+                "Server administrators are always admins. Also configured:"
+                if config["guild_id"] else "Configured admins:"
+            ),
             color=discord.Color.purple()
         )
 
@@ -167,7 +170,11 @@ class SettingsView(discord.ui.View):
             embed.add_field(name=f"Admin Roles ({len(admin_role_ids)})", value=capped_lines(lines), inline=False)
 
         if not admin_ids and not admin_role_ids:
-            embed.description = "Only server administrators are admins; no other users or roles are configured."
+            embed.description = (
+                "Only server administrators are admins; no other users or roles are configured."
+                if config["guild_id"] else
+                "⚠️ No admins configured, and guild_id isn't set. Add admin_ids or guild_id to data/config.yaml."
+            )
 
         return embed
 
