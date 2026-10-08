@@ -1,5 +1,7 @@
 # Review System Migration Guide
 
+> **Historical note:** this describes the V2 → V3 move from +/- rep to star reviews. Installs from that era are upgraded automatically; nothing here needs to be done by hand.
+
 ## Overview
 
 The bot has been upgraded from a simple +/- rep system to a comprehensive **star rating review system** with the following new features:
@@ -32,8 +34,8 @@ CREATE TABLE reviews (
 ```
 
 ### Backward Compatibility
-- Old `rep` and `rep_totals` tables are preserved but deprecated
-- Existing data remains intact but new reviews use the new system
+- Databases that already have the old `rep` and `rep_totals` tables keep them untouched
+- New installs no longer create them, and the bot no longer reads or writes them
 
 ---
 
@@ -93,10 +95,10 @@ Latest Reviews:
 - `get_top_rated_users(limit)` - Get leaderboard by rating
 - `has_user_reviewed(giver_id, receiver_id, thread_id)` - Check if already reviewed
 
-### UI Functions (cogs/rep.py)
+### UI (views/review.py, utils/formatting.py)
 - `ReviewModal` - Modal popup for collecting ratings and notes
-- `ReviewButtonView` - New button interface with review button
-- `post_review_ui()` - Display review interface with stars and recent reviews
+- `ReviewButtonView` - Persistent "Leave a Review" / "Close Post" buttons
+- `build_review_panel()` / `post_review_ui()` - Review panel with stars and recent reviews
 - `generate_star_rating()` - Convert numeric rating to star display
 
 ---
@@ -111,7 +113,6 @@ Latest Reviews:
 
 ### For Admins
 - Run the bot - database will auto-upgrade with new tables
-- Old rep data remains accessible but new reviews are preferred
 - Update any documentation referencing old commands
 - Consider informing users about the new review system
 

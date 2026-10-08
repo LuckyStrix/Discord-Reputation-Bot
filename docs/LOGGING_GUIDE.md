@@ -1,99 +1,47 @@
-# Logging System Usage Guide
+# Logging Guide
 
-The logging system has been separated into its own modular cog (`cogs/logging.py`) that provides versatile logging capabilities for all other cogs.
+The bot logs to the channel set by `log_channel` in `data/config.yaml` (or `/log`). If no log channel is set, or the bot can't post there, logging is skipped and everything else keeps working.
 
-## Key Features
+## What gets logged
 
-- **Thread-based logging**: Track activities in Discord threads with persistent embed logs
-- **Custom logging**: Create and update custom log entries with unique identifiers  
-- **Simple messaging**: Send one-off log messages with optional embeds
-- **Plug-and-play**: Easy to integrate into any new cog
+**One live embed per post.** When a post is created in a tracked forum, the bot posts an embed and keeps editing it:
 
-## How to Use in Your Cogs
+| Field | Example |
+|-------|---------|
+| TOS Status | ⏳ Pending → ✅ Accepted at 14:02 |
+| Review Events | @Buyer gave 9/10 rating at 15:30 (one line per review, newest kept if it gets long) |
+| Thread Status | ✅ Open → 🤖 Auto-closed at 15:30 |
 
-### 1. Get the Logging Cog Instance
+The embed's message ID is stored in the database, so the same embed keeps updating after a restart.
+
+**Separate entries** for each submitted review, auto-close scheduled or cancelled, admin force-closes, auto-closes, settings changes and opening `/settings`.
+
+## Logging from your own cog
+
+Use the helpers in `utils/threads.py`:
+
 ```python
-logging_cog = self.bot.get_cog("LoggingSystem")
-if not logging_cog:
-    return  # Logging system not available
-```
+import discord
+from utils.threads import send_log, update_thread_log
 
-### 2. Thread-Based Logging
-```python
-# Create a thread log with custom fields
-await logging_cog.create_thread_log(
-    thread,
-    title="Custom Thread Title",
-    description="Description here",
-    color=discord.Color.blue(),
-    fields={
-        "Status": "Active",
-        "Events": "*No events yet*",
-        "Custom Field": "Custom Value"
-    }
-)
+# One-off log entry (timestamp added automatically)
+embed = discord.Embed(title="📦 Item sold", description=f"{member.mention} sold an item")
+await send_log(bot, embed)
 
-# Update thread log fields
-await logging_cog.update_thread_log(
-    thread,
-    field_updates={"Status": "Completed"},
-    event_additions={"Events": "New event occurred"}
+# Update a post's live embed
+await update_thread_log(
+    bot, thread,
+    field_updates={"Thread Status": "✅ Sold"},           # replace a field (added if missing)
+    event_additions={"Review Events": "Buyer confirmed"},  # append a timestamped line
 )
 ```
 
-### 3. Custom Logging with Identifiers
-```python
-# Create a custom log
-await logging_cog.create_custom_log(
-    identifier="my_unique_id",
-    title="My Activity Log",
-    description="Description",
-    color=discord.Color.green(),
-    fields={"Status": "In Progress"}
-)
-
-# Update the custom log later
-await logging_cog.update_custom_log(
-    identifier="my_unique_id",
-    field_updates={"Status": "Completed"},
-    event_additions={"Events": "Task finished"}
-)
-```
-
-### 4. Simple Message Logging
-```python
-# Log a simple message
-await logging_cog.log_simple_message("Something happened!")
-
-# Log with an embed
-embed = discord.Embed(title="Event", description="Details")
-await logging_cog.log_simple_message("", embed=embed)
-```
-
-## Configuration
-
-The logging system uses the `log_channel` setting from `data/config.yaml`:
-
-```yaml
-log_channel: 123456789012345678  # Your log channel ID
-```
-
-## Example Implementation
-
-See `cogs/example_cog.py` for a complete example of how to integrate the logging system into a new cog.
-
-## Migration from Old System
-
-The Rep cog has been updated to use the new logging system. Key changes:
-- `_update_thread_log()` calls replaced with `logging_cog.update_thread_log()`
-- `_ensure_thread_log()` replaced with `logging_cog.create_thread_log()`
-- Parameters restructured to use dictionaries for better organization
-
-## Loading Order
-
-Make sure to load the logging cog before other cogs that depend on it in `bot.py`:
+`update_thread_log` creates the post's embed if it doesn't exist yet. To create one with custom fields, call the cog directly:
 
 ```python
-await bot.load_extension("cogs.logging")
-await bot.load_extension("cogs.rep")  # Depends on logging
+logging_cog = bot.get_cog("LoggingSystem")
+if logging_cog:
+    await logging_cog.create_thread_log(thread, fields={"Status": "Active", "Events": "*No events yet*"})
 ```
+
+Load `cogs.logging_system` before cogs that use it (see `EXTENSIONS` in `bot.py`).

@@ -1,98 +1,40 @@
-# Admin System Guide
+# Admin Guide
 
-## Overview
+## Who is an admin?
 
-The bot now includes an admin system that allows designated users to have additional privileges, particularly for moderating posts.
+A member is a bot admin if **any** of these is true:
 
-## Admin Configuration
+1. They have the **Administrator** permission in the server (this includes the server owner).
+2. Their user ID is in `admin_ids` in `data/config.yaml`.
+3. They have a role listed in `admin_role_ids`.
 
-### Config File Setup
+Because server administrators always count, a fresh install can be configured from Discord before anyone is listed in the config.
 
-Admins are configured in `data/config.yaml`:
+The bot's **owner** (the account that owns the application in the Developer Portal) is separate: only the owner can run `!sync`.
 
-```yaml
-admin_ids:
-- 123456789012345678  # Replace with actual admin user IDs
-- 987654321098765432  # Add more admin IDs as needed
-```
+## Managing admins
 
-### Getting User IDs
+| Command | Effect |
+|---------|--------|
+| `/admin_add @user` | Adds the user to `admin_ids` |
+| `/admin_remove @user` | Removes the user from `admin_ids` |
+| `/admin_role_add @role` | Adds the role to `admin_role_ids` |
+| `/admin_role_remove @role` | Removes the role from `admin_role_ids` |
+| `/admin_list` | Lists configured users and roles |
 
-To get a user's Discord ID:
-1. Enable Developer Mode in Discord (User Settings → Advanced → Developer Mode)
-2. Right-click the user → Copy User ID
-3. Add the ID to the `admin_ids` list in config.yaml
+You can also edit `data/config.yaml` directly; the bot notices the change without a restart.
 
-## Admin Privileges
+To copy a user or role ID, enable **Developer Mode** (User Settings → Advanced), then right-click the user or role.
 
-### Force Close Posts
+## What admins can do
 
-**Normal Users**: Can only close their own posts after receiving at least one review
-**Admins**: Can force close ANY post without review requirements
+- Run every admin command (see [COMMANDS.md](COMMANDS.md)), including `/settings`
+- Close anyone's post with **Close Post**. If `admin_close_confirmation` is on, they confirm by typing "Yes".
+- Post a fresh review panel in any thread with `/send_review_ui`
 
-When an admin closes a post:
-- Message: "🔒 This thread has been closed by admin @AdminName."
-- Log: "❌ Force closed by admin @AdminName at [timestamp]"
+## Safety notes
 
-### Admin Management Commands
-
-| Command | Description | Permission |
-|---------|-------------|------------|
-| `/admin_add @user` | Add a user as admin | Admin only |
-| `/admin_remove @user` | Remove admin privileges | Admin only |
-| `/admin_list` | View all admins | Admin only |
-
-## Admin Command Examples
-
-### Adding an Admin
-```
-/admin_add @NewAdmin
-```
-Response: "✅ @NewAdmin has been added as an admin."
-
-### Removing an Admin
-```
-/admin_remove @FormerAdmin
-```
-Response: "✅ @FormerAdmin has been removed from admin."
-
-### Listing Admins
-```
-/admin_list
-```
-Shows all current admins with their display names.
-
-## Safety Features
-
-- **Self-Protection**: Cannot remove yourself as admin if you're the last admin
-- **Admin-Only**: Only existing admins can add/remove other admins
-- **Duplicate Prevention**: Cannot add someone who's already an admin
-- **Graceful Handling**: Shows friendly error messages for invalid operations
-
-## Usage Examples
-
-### Normal Post Closure (by OP)
-- User clicks "Close Post" 
-- System checks: Is this the thread owner? ✓
-- System checks: Does thread have reviews? ✓
-- Result: Post closes normally
-
-### Admin Force Closure
-- Admin clicks "Close Post" on any thread
-- System checks: Is this an admin? ✓
-- System skips: Review requirement check (admin override)
-- Result: Post closes immediately with admin attribution
-
-## Configuration Tips
-
-1. **Start Small**: Begin with 1-2 trusted admins
-2. **Document IDs**: Keep a record of who each ID belongs to
-3. **Regular Review**: Periodically review the admin list with `/admin_list`
-4. **Backup Config**: Keep backups of your config.yaml file
-
-## Security Notes
-
-- Admin privileges are powerful - choose admins carefully
-- IDs in config are persistent until manually removed
-- Bot restart not required when updating admin list via commands
-- Config file changes require bot restart to take effect
+- Admins can change the log channel, tracked forums and the admin list itself, so choose them carefully.
+- Prefer `admin_role_ids` for staff teams: removing someone's role removes their bot access too.
+- Every settings change, admin close and auto-close is recorded in the log channel.
+- Back up `data/config.yaml` and `data/rep.db` before large changes.

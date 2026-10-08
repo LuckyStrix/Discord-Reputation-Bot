@@ -16,7 +16,7 @@ class SettingsView(discord.ui.View):
     async def auto_close_settings(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not is_admin(interaction.user):
             return await interaction.response.send_message("❌ Only admins can modify settings.", ephemeral=True)
-        
+
         modal = AutoCloseSettingsModal()
         await interaction.response.send_modal(modal)
 
@@ -24,7 +24,7 @@ class SettingsView(discord.ui.View):
     async def tos_settings(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not is_admin(interaction.user):
             return await interaction.response.send_message("❌ Only admins can modify settings.", ephemeral=True)
-        
+
         modal = TOSSettingsModal()
         await interaction.response.send_modal(modal)
 
@@ -32,7 +32,7 @@ class SettingsView(discord.ui.View):
     async def admin_settings(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not is_admin(interaction.user):
             return await interaction.response.send_message("❌ Only admins can view admin settings.", ephemeral=True)
-        
+
         embed = await self.create_admin_settings_embed(interaction)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -40,7 +40,7 @@ class SettingsView(discord.ui.View):
     async def bot_status_settings(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not is_admin(interaction.user):
             return await interaction.response.send_message("❌ Only admins can modify settings.", ephemeral=True)
-        
+
         modal = BotStatusSettingsModal()
         await interaction.response.send_modal(modal)
 
@@ -51,7 +51,7 @@ class SettingsView(discord.ui.View):
 
     async def create_main_settings_embed(self, interaction: discord.Interaction):
         config = load_config()
-        
+
         embed = discord.Embed(
             title="⚙️ Bot Settings",
             description="Click the buttons below to view or modify specific settings",
@@ -108,11 +108,11 @@ class SettingsView(discord.ui.View):
         activity_type = bot_status.get("activity_type", "watching")
         message = bot_status.get("message", "marketplace reviews")
         status_type = bot_status.get("status_type", "online")
-        
+
         status_display = f"**Status:** {'✅ Enabled' if status_enabled else '❌ Disabled'}"
         if status_enabled:
             status_display += f"\n**Activity:** {activity_type.title()} {message}\n**Type:** {status_type.title()}"
-        
+
         embed.add_field(
             name="🤖 Bot Status",
             value=status_display,
@@ -126,7 +126,7 @@ class SettingsView(discord.ui.View):
 
     async def create_admin_settings_embed(self, interaction: discord.Interaction):
         config = load_config()
-        
+
         embed = discord.Embed(
             title="👑 Admin Settings",
             description="Current administrative users and roles",
@@ -143,10 +143,10 @@ class SettingsView(discord.ui.View):
                     admin_mentions.append(f"• {member.mention}")
                 else:
                     admin_mentions.append(f"• <@{admin_id}> (Not found)")
-            
+
             if len(admin_ids) > 10:
                 admin_mentions.append(f"• ... and {len(admin_ids) - 10} more")
-                
+
             embed.add_field(
                 name=f"Admin Users ({len(admin_ids)})",
                 value="\n".join(admin_mentions) if admin_mentions else "None",
@@ -163,7 +163,7 @@ class SettingsView(discord.ui.View):
                     role_mentions.append(f"• {role.mention}")
                 else:
                     role_mentions.append(f"• <@&{role_id}> (Role deleted)")
-                    
+
             embed.add_field(
                 name=f"Admin Roles ({len(admin_role_ids)})",
                 value="\n".join(role_mentions) if role_mentions else "None",
@@ -179,9 +179,9 @@ class SettingsView(discord.ui.View):
 class AutoCloseSettingsModal(discord.ui.Modal):
     def __init__(self):
         super().__init__(title="Auto-Close Settings")
-        
+
         config = load_config()
-        
+
         self.enabled = discord.ui.TextInput(
             label="Enable Auto-Close (true/false)",
             placeholder="true or false",
@@ -190,7 +190,7 @@ class AutoCloseSettingsModal(discord.ui.Modal):
             required=True
         )
         self.add_item(self.enabled)
-        
+
         self.hours = discord.ui.TextInput(
             label="Auto-Close Hours (1-168)",
             placeholder="Number of hours before auto-close",
@@ -199,7 +199,7 @@ class AutoCloseSettingsModal(discord.ui.Modal):
             required=True
         )
         self.add_item(self.hours)
-        
+
         self.admin_confirmation = discord.ui.TextInput(
             label="Admin Close Confirmation (true/false)",
             placeholder="true or false",
@@ -211,14 +211,14 @@ class AutoCloseSettingsModal(discord.ui.Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         config = load_config()
-        
+
         # Validate enabled setting
         enabled_value = self.enabled.value.lower().strip()
         if enabled_value not in ["true", "false"]:
             return await interaction.response.send_message("❌ Enabled must be 'true' or 'false'", ephemeral=True)
-        
+
         enabled = enabled_value == "true"
-        
+
         # Validate hours
         try:
             hours = int(self.hours.value.strip())
@@ -231,18 +231,18 @@ class AutoCloseSettingsModal(discord.ui.Modal):
         admin_confirmation_value = self.admin_confirmation.value.lower().strip()
         if admin_confirmation_value not in ["true", "false"]:
             return await interaction.response.send_message("❌ Admin confirmation must be 'true' or 'false'", ephemeral=True)
-        
+
         admin_confirmation = admin_confirmation_value == "true"
 
         # Save changes
         old_enabled = config.get("auto_close_enabled", True)
         old_hours = config.get("auto_close_hours", 24)
         old_admin_confirmation = config.get("admin_close_confirmation", True)
-        
+
         config["auto_close_enabled"] = enabled
         config["auto_close_hours"] = hours
         config["admin_close_confirmation"] = admin_confirmation
-        
+
         save_config(config)
 
         # Create response
@@ -253,7 +253,7 @@ class AutoCloseSettingsModal(discord.ui.Modal):
         embed.add_field(name="Enabled", value=f"{old_enabled} → **{enabled}**", inline=True)
         embed.add_field(name="Hours", value=f"{old_hours} → **{hours}**", inline=True)
         embed.add_field(name="Admin Confirmation", value=f"{old_admin_confirmation} → **{admin_confirmation}**", inline=True)
-        
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
         # Log the changes
@@ -271,9 +271,9 @@ class AutoCloseSettingsModal(discord.ui.Modal):
 class TOSSettingsModal(discord.ui.Modal):
     def __init__(self):
         super().__init__(title="TOS Settings")
-        
+
         config = load_config()
-        
+
         self.tos_message = discord.ui.TextInput(
             label="TOS Message",
             placeholder="Message shown when threads are created...",
@@ -283,7 +283,7 @@ class TOSSettingsModal(discord.ui.Modal):
             required=True
         )
         self.add_item(self.tos_message)
-        
+
         self.decline_response = discord.ui.TextInput(
             label="TOS Decline Response",
             placeholder="Message when TOS is declined...",
@@ -296,11 +296,11 @@ class TOSSettingsModal(discord.ui.Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         config = load_config()
-        
+
         # Save changes
         config["tos_message"] = self.tos_message.value.strip()
         config["tos_decline_response"] = self.decline_response.value.strip()
-        
+
         save_config(config)
 
         embed = discord.Embed(
@@ -308,7 +308,7 @@ class TOSSettingsModal(discord.ui.Modal):
             description="Terms of Service messages have been updated",
             color=discord.Color.green()
         )
-        
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
         # Log the changes
@@ -323,10 +323,10 @@ class TOSSettingsModal(discord.ui.Modal):
 class BotStatusSettingsModal(discord.ui.Modal):
     def __init__(self):
         super().__init__(title="Bot Status Settings")
-        
+
         config = load_config()
         bot_status = config.get("bot_status", {})
-        
+
         self.enabled = discord.ui.TextInput(
             label="Enable Custom Status (true/false)",
             placeholder="true or false",
@@ -335,7 +335,7 @@ class BotStatusSettingsModal(discord.ui.Modal):
             required=True
         )
         self.add_item(self.enabled)
-        
+
         self.activity_type = discord.ui.TextInput(
             label="Activity Type",
             placeholder="playing, listening, watching, competing, streaming",
@@ -344,7 +344,7 @@ class BotStatusSettingsModal(discord.ui.Modal):
             required=True
         )
         self.add_item(self.activity_type)
-        
+
         self.message = discord.ui.TextInput(
             label="Status Message",
             placeholder="What the bot is doing (e.g. marketplace reviews)",
@@ -353,7 +353,7 @@ class BotStatusSettingsModal(discord.ui.Modal):
             required=True
         )
         self.add_item(self.message)
-        
+
         self.status_type = discord.ui.TextInput(
             label="Status Type",
             placeholder="online, idle, dnd, invisible",
@@ -365,32 +365,32 @@ class BotStatusSettingsModal(discord.ui.Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         config = load_config()
-        
+
         # Validate enabled setting
         enabled_value = self.enabled.value.lower().strip()
         if enabled_value not in ["true", "false"]:
             return await interaction.response.send_message("❌ Enabled must be 'true' or 'false'", ephemeral=True)
-        
+
         enabled = enabled_value == "true"
-        
+
         # Validate activity type
         valid_activities = ["playing", "listening", "watching", "competing", "streaming"]
         activity_type = self.activity_type.value.lower().strip()
         if activity_type not in valid_activities:
             return await interaction.response.send_message(
-                f"❌ Activity type must be one of: {', '.join(valid_activities)}", 
+                f"❌ Activity type must be one of: {', '.join(valid_activities)}",
                 ephemeral=True
             )
-        
+
         # Validate status type
         valid_statuses = ["online", "idle", "dnd", "invisible"]
         status_type = self.status_type.value.lower().strip()
         if status_type not in valid_statuses:
             return await interaction.response.send_message(
-                f"❌ Status type must be one of: {', '.join(valid_statuses)}", 
+                f"❌ Status type must be one of: {', '.join(valid_statuses)}",
                 ephemeral=True
             )
-        
+
         message = self.message.value.strip()
         if not message:
             return await interaction.response.send_message("❌ Status message cannot be empty", ephemeral=True)
@@ -402,7 +402,7 @@ class BotStatusSettingsModal(discord.ui.Modal):
             "message": message,
             "status_type": status_type
         }
-        
+
         save_config(config)
 
         # Update bot status immediately if enabled
@@ -418,10 +418,10 @@ class BotStatusSettingsModal(discord.ui.Modal):
         embed.add_field(name="Activity", value=f"**{activity_type.title()}**", inline=True)
         embed.add_field(name="Message", value=f"**{message}**", inline=True)
         embed.add_field(name="Status", value=f"**{status_type.title()}**", inline=True)
-        
+
         if enabled:
             embed.add_field(name="Result", value=f"{activity_type.title()} {message}", inline=False)
-        
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
         # Log the changes
@@ -435,5 +435,5 @@ class BotStatusSettingsModal(discord.ui.Modal):
         log_embed.add_field(name="Message", value=message, inline=True)
         log_embed.add_field(name="Status Type", value=status_type, inline=True)
         await send_log(interaction.client, log_embed)
-                
+
         print(f"[BOT-STATUS] {interaction.user} updated bot status: {activity_type} {message} ({status_type})")

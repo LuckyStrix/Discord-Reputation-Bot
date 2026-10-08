@@ -53,20 +53,20 @@ class Admin(commands.Cog):
     async def admin_add(self, interaction: discord.Interaction, user: discord.Member):
         config = load_config()
         admin_ids = config.get("admin_ids", [])
-        
+
         # Check if target is already admin
         if is_admin(user):
             await interaction.response.send_message(
                 f"{user.mention} is already an admin.", ephemeral=True
             )
             return
-            
+
         # Add the new admin (add to user IDs by default)
         admin_ids.append(user.id)
         config["admin_ids"] = admin_ids
-        
+
         save_config(config)
-            
+
         embed = discord.Embed(
             title="✅ Admin Added",
             description=f"{user.mention} has been added as an admin.",
@@ -81,27 +81,27 @@ class Admin(commands.Cog):
     async def admin_remove(self, interaction: discord.Interaction, user: discord.Member):
         config = load_config()
         admin_ids = config.get("admin_ids", [])
-        
+
         # Check if target is admin by user ID (only remove from user IDs, not roles)
         if user.id not in admin_ids:
             await interaction.response.send_message(
                 f"{user.mention} is not an admin.", ephemeral=True
             )
             return
-            
+
         # Don't allow self-removal if only admin
         if user.id == interaction.user.id and len(admin_ids) == 1:
             await interaction.response.send_message(
                 "❌ Cannot remove yourself as the last admin.", ephemeral=True
             )
             return
-            
+
         # Remove the admin
         admin_ids.remove(user.id)
         config["admin_ids"] = admin_ids
-        
+
         save_config(config)
-            
+
         embed = discord.Embed(
             title="✅ Admin Removed",
             description=f"{user.mention} has been removed from admin.",
@@ -116,13 +116,13 @@ class Admin(commands.Cog):
         config = load_config()
         admin_ids = config.get("admin_ids", [])
         admin_role_ids = config.get("admin_role_ids", [])
-        
+
         embed = discord.Embed(
             title="👑 Admin List",
             description="Current bot administrators:",
             color=discord.Color.purple()
         )
-        
+
         if not admin_ids and not admin_role_ids:
             embed.description = "No admins configured."
         else:
@@ -135,13 +135,13 @@ class Admin(commands.Cog):
                         admin_mentions.append(f"• {member.mention} ({member.display_name})")
                     else:
                         admin_mentions.append(f"• <@{admin_id}> (ID: {admin_id})")
-                
+
                 embed.add_field(
                     name=f"Admin Users ({len(admin_ids)})",
                     value="\n".join(admin_mentions),
                     inline=False
                 )
-            
+
             # Show admin roles
             if admin_role_ids:
                 role_mentions = []
@@ -151,13 +151,13 @@ class Admin(commands.Cog):
                         role_mentions.append(f"• {role.mention} ({role.name})")
                     else:
                         role_mentions.append(f"• <@&{role_id}> (ID: {role_id})")
-                
+
                 embed.add_field(
                     name=f"Admin Roles ({len(admin_role_ids)})",
                     value="\n".join(role_mentions),
                     inline=False
                 )
-        
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="admin_role_add", description="Add a role as admin (admin only).")
@@ -167,20 +167,20 @@ class Admin(commands.Cog):
     async def admin_role_add(self, interaction: discord.Interaction, role: discord.Role):
         config = load_config()
         admin_role_ids = config.get("admin_role_ids", [])
-        
+
         # Check if role is already admin
         if role.id in admin_role_ids:
             await interaction.response.send_message(
                 f"{role.mention} is already an admin role.", ephemeral=True
             )
             return
-            
+
         # Add the new admin role
         admin_role_ids.append(role.id)
         config["admin_role_ids"] = admin_role_ids
-        
+
         save_config(config)
-            
+
         embed = discord.Embed(
             title="✅ Admin Role Added",
             description=f"{role.mention} has been added as an admin role.",
@@ -195,20 +195,20 @@ class Admin(commands.Cog):
     async def admin_role_remove(self, interaction: discord.Interaction, role: discord.Role):
         config = load_config()
         admin_role_ids = config.get("admin_role_ids", [])
-        
+
         # Check if role is admin
         if role.id not in admin_role_ids:
             await interaction.response.send_message(
                 f"{role.mention} is not an admin role.", ephemeral=True
             )
             return
-            
+
         # Remove the admin role
         admin_role_ids.remove(role.id)
         config["admin_role_ids"] = admin_role_ids
-        
+
         save_config(config)
-            
+
         embed = discord.Embed(
             title="✅ Admin Role Removed",
             description=f"{role.mention} has been removed from admin roles.",
@@ -222,12 +222,12 @@ class Admin(commands.Cog):
     @app_commands.describe(enabled="Enable or disable auto-close feature")
     async def auto_close_toggle(self, interaction: discord.Interaction, enabled: bool = None):
         config = load_config()
-        
+
         # If no parameter provided, show current status
         if enabled is None:
             current_status = config.get("auto_close_enabled", True)
             current_hours = config.get("auto_close_hours", 24)
-            
+
             embed = discord.Embed(
                 title="⚙️ Auto-Close Settings",
                 description=f"**Status:** {'✅ Enabled' if current_status else '❌ Disabled'}",
@@ -235,42 +235,42 @@ class Admin(commands.Cog):
             )
             embed.add_field(name="Auto-Close Timer", value=f"{current_hours} hours", inline=True)
             embed.add_field(name="Usage", value="Use `/auto_close_toggle true/false` to change", inline=False)
-            
+
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
-        
+
         # Update the setting
         old_status = config.get("auto_close_enabled", True)
         config["auto_close_enabled"] = enabled
-        
+
         save_config(config)
-        
+
         # Create response embed
         status_text = "✅ Enabled" if enabled else "❌ Disabled"
         color = discord.Color.green() if enabled else discord.Color.red()
-        
+
         embed = discord.Embed(
             title="⚙️ Auto-Close Setting Updated",
             description=f"Auto-close feature is now **{status_text}**",
             color=color
         )
-        
+
         if enabled:
             hours = config.get("auto_close_hours", 24)
             embed.add_field(
-                name="Timer", 
-                value=f"Threads will auto-close {hours} hours after first review", 
+                name="Timer",
+                value=f"Threads will auto-close {hours} hours after first review",
                 inline=False
             )
         else:
             embed.add_field(
-                name="Note", 
-                value="Existing scheduled auto-closes will still occur unless manually cancelled", 
+                name="Note",
+                value="Existing scheduled auto-closes will still occur unless manually cancelled",
                 inline=False
             )
-        
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
-        
+
         # Log the change to log channel
         log_embed = discord.Embed(
             title="🔧 Auto-Close Setting Changed",
@@ -280,7 +280,7 @@ class Admin(commands.Cog):
         log_embed.add_field(name="Previous Status", value="✅ Enabled" if old_status else "❌ Disabled", inline=True)
         log_embed.add_field(name="New Status", value=status_text, inline=True)
         await send_log(interaction.client, log_embed)
-        
+
         print(f"[AUTO-CLOSE] {interaction.user} ({'enabled' if enabled else 'disabled'}) auto-close feature")
 
     @app_commands.command(name="auto_close_hours", description="Set the number of hours before auto-close (admin only).")
@@ -294,13 +294,13 @@ class Admin(commands.Cog):
                 "❌ Hours must be between 1 and 168 (1 week).", ephemeral=True
             )
             return
-        
+
         config = load_config()
         old_hours = config.get("auto_close_hours", 24)
         config["auto_close_hours"] = hours
-        
+
         save_config(config)
-        
+
         embed = discord.Embed(
             title="⏰ Auto-Close Timer Updated",
             description=f"Auto-close timer set to **{hours} hours**",
@@ -309,13 +309,13 @@ class Admin(commands.Cog):
         embed.add_field(name="Previous", value=f"{old_hours} hours", inline=True)
         embed.add_field(name="New", value=f"{hours} hours", inline=True)
         embed.add_field(
-            name="Note", 
-            value="This only affects new auto-close schedules. Existing ones keep their original timing.", 
+            name="Note",
+            value="This only affects new auto-close schedules. Existing ones keep their original timing.",
             inline=False
         )
-        
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
-        
+
         # Log the change
         log_embed = discord.Embed(
             title="⏰ Auto-Close Timer Changed",
@@ -323,7 +323,7 @@ class Admin(commands.Cog):
             color=discord.Color.blue()
         )
         await send_log(interaction.client, log_embed)
-        
+
         print(f"[AUTO-CLOSE] {interaction.user} changed auto-close timer to {hours} hours")
 
     @app_commands.command(name="settings", description="View and modify bot settings through an interactive interface (admin only).")
@@ -333,7 +333,7 @@ class Admin(commands.Cog):
         # Create the settings view and embed
         view = SettingsView(interaction)
         embed = await view.create_main_settings_embed(interaction)
-        
+
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
         # Log settings access

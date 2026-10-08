@@ -1,14 +1,4 @@
-# Discord Bot Requirements
-discord.py>=2.3.2
-PyYAML
-python-dotenv
-
-# Additional Dependencies (shared)
-aiohttp==3.12.15
-aiosignal==1.4.0
-async-timeout==4.0.3
-attrs==25.3.0
-charset-normalizer==3.4.3
-frozenlist==1.7.0
-multidict==6.6.4
-yarl==1.20.1
+# Runtime dependencies (Python 3.11+)
+discord.py>=2.4,<3
+PyYAML>=6.0
+python-dotenv>=1.0

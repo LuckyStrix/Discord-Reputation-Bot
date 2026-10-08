@@ -1,102 +1,34 @@
-# Close Post Flow Guide
+# How Posts Are Closed
 
-## Overview
+Closing a post archives and locks the thread, records it in the database and updates the post's log embed. Buttons in a closed post reply "🔒 This post is closed." and do nothing else.
 
-The close post button now has different behaviors depending on the user and whether the post has received reviews.
+## Close Post button
 
-## Close Post Flow
-
-### 1. **Admin Users**
-- ✅ Can close ANY post immediately
-- ✅ No confirmation required
-- ✅ No review requirement
-- 📝 Message: "🔒 This thread has been closed by admin @AdminName."
-- 📋 Log: "❌ Force closed by admin @AdminName at [timestamp]"
-
-### 2. **Post Creator WITH Reviews**
-- ✅ Can close their own post immediately
-- ✅ No confirmation required  
-- ✅ Must have at least 1 review
-- 📝 Message: "🔒 This thread is now closed by its creator."
-- 📋 Log: "❌ Closed at [timestamp]"
-
-### 3. **Post Creator WITHOUT Reviews** ⭐ **NEW**
-- ⚠️ Shows confirmation modal before closing
-- 📋 Modal Title: "Close Post Confirmation"
-- 📝 Required Input: Type "Yes" to confirm
-- ❌ Cancellation: Any other input cancels closure
-- 📝 Success Message: "🔒 This thread is now closed by its creator (no reviews received)."
-- 📋 Log: "❌ Closed without reviews at [timestamp]"
-
-### 4. **Other Users**
-- ❌ Cannot close posts
-- 📝 Error: "Only the thread creator or admins can close this post."
-
-## Confirmation Modal Details
-
-### Modal Appearance
 ```
-┌─────────────────────────────────────┐
-│        Close Post Confirmation      │
-├─────────────────────────────────────┤
-│ Type 'Yes' to confirm closing       │
-│ without reviews                     │
-│                                     │
-│ ┌─────────────────────────────────┐ │
-│ │ Yes                             │ │ 
-│ └─────────────────────────────────┘ │
-│                                     │
-│            [Submit] [Cancel]        │
-└─────────────────────────────────────┘
+Clicked by…
+├── someone else                → "Only the thread creator or admins can close this post."
+├── an admin (not the owner)
+│   ├── admin_close_confirmation: true  → type "Yes" to confirm → closed
+│   └── admin_close_confirmation: false → closed immediately
+└── the post owner
+    ├── post has reviews        → closed immediately
+    └── post has no reviews     → type "Yes" to confirm → closed
 ```
 
-### User Experience
-1. **Post creator clicks "Close Post"**
-2. **System checks for reviews**
-3. **If NO reviews:** Modal appears with confirmation
-4. **User must type "Yes"** exactly (case insensitive)
-5. **Any other input** cancels the closure
-6. **On success:** Post closes with special message
+The confirmation accepts "Yes" in any capitalisation; anything else cancels.
 
-### Validation
-- ✅ "Yes" → Post closes
-- ✅ "yes" → Post closes  
-- ✅ "YES" → Post closes
-- ❌ "Y" → Cancellation
-- ❌ "True" → Cancellation
-- ❌ "" (empty) → Cancellation
-- ❌ "No" → Cancellation
+| Who closed it | Message in the thread | Log status |
+|---------------|-----------------------|------------|
+| Owner, with reviews | 🔒 This thread is now closed by its creator. | ❌ Closed |
+| Owner, no reviews | 🔒 This thread is now closed by its creator (no reviews received). | ❌ Closed without reviews |
+| Admin | 🔒 This thread has been closed by admin @Name. | ❌ Force closed by admin @Name |
 
-## Benefits
+## Automatic closing
 
-### **User Protection**
-- Prevents accidental closure of posts without feedback
-- Clear acknowledgment that no reviews were received
-- Easy to cancel if clicked by mistake
+### After the first review
+When a post receives its first review (and `auto_close_enabled` is on), the bot schedules it to close after `auto_close_hours` and posts a notice with a countdown. The owner can click **I have multiple items - Keep thread open** to cancel. A cancelled post is never rescheduled.
 
-### **Flexibility**
-- Still allows closure when truly needed
-- No permanent blocking of post closure
-- Maintains user control over their posts
+The bot checks for due posts every 10 minutes, so a post can close up to 10 minutes after its timer ends. Posts that Discord has already archived are still closed and locked.
 
-### **Admin Override**
-- Admins retain full control for moderation
-- No extra steps for administrative actions
-- Clear distinction between user and admin closures
-
-## Implementation Notes
-
-The confirmation modal is implemented in the `CloseConfirmationModal` class and integrates seamlessly with the existing logging and thread management systems.
-
-### Code Flow
-```python
-1. User clicks "Close Post"
-2. Check: Is user admin? → Skip to immediate close
-3. Check: Is user post creator? → Continue
-4. Check: Does post have reviews? 
-   - YES → Close immediately
-   - NO → Show confirmation modal
-5. Modal: User types "Yes" → Close with special message
-```
-
-This provides the perfect balance of user protection and flexibility!
+### TOS not answered
+If the owner doesn't answer the TOS prompt within `tos_timeout_seconds` (default 30), the post is closed. Declining the TOS closes it straight away. Both survive restarts: a prompt that expired while the bot was offline is handled as soon as it comes back.
