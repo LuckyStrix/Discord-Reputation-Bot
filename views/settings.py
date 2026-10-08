@@ -1,10 +1,9 @@
 """Interactive /settings panel and the modals behind each button."""
-from datetime import datetime
-
 import discord
 
 from utils.checks import is_admin
 from utils.config import load_config, save_config
+from utils.threads import send_log
 from utils.presence import apply_bot_status
 
 
@@ -54,7 +53,7 @@ class SettingsView(discord.ui.View):
         config = load_config()
         
         embed = discord.Embed(
-            title="⚙️ Bot Settings Dashboard",
+            title="⚙️ Bot Settings",
             description="Click the buttons below to view or modify specific settings",
             color=discord.Color.blue()
         )
@@ -121,7 +120,7 @@ class SettingsView(discord.ui.View):
         )
 
         embed.set_footer(text="Use buttons to modify settings • Admin permissions required")
-        embed.timestamp = datetime.now()
+        embed.timestamp = discord.utils.utcnow()
 
         return embed
 
@@ -258,20 +257,15 @@ class AutoCloseSettingsModal(discord.ui.Modal):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
         # Log the changes
-        log_ch_id = config.get("log_channel")
-        if log_ch_id:
-            log_ch = interaction.client.get_channel(log_ch_id)
-            if log_ch:
-                log_embed = discord.Embed(
-                    title="⚙️ Auto-Close Settings Modified",
-                    description=f"{interaction.user.mention} updated auto-close settings",
-                    color=discord.Color.blue()
-                )
-                log_embed.add_field(name="Enabled", value=f"{old_enabled} → {enabled}", inline=True)
-                log_embed.add_field(name="Hours", value=f"{old_hours} → {hours}", inline=True)
-                log_embed.add_field(name="Admin Confirmation", value=f"{old_admin_confirmation} → {admin_confirmation}", inline=True)
-                log_embed.timestamp = datetime.now()
-                await log_ch.send(embed=log_embed)
+        log_embed = discord.Embed(
+            title="⚙️ Auto-Close Settings Modified",
+            description=f"{interaction.user.mention} updated auto-close settings",
+            color=discord.Color.blue()
+        )
+        log_embed.add_field(name="Enabled", value=f"{old_enabled} → {enabled}", inline=True)
+        log_embed.add_field(name="Hours", value=f"{old_hours} → {hours}", inline=True)
+        log_embed.add_field(name="Admin Confirmation", value=f"{old_admin_confirmation} → {admin_confirmation}", inline=True)
+        await send_log(interaction.client, log_embed)
 
 
 class TOSSettingsModal(discord.ui.Modal):
@@ -318,17 +312,12 @@ class TOSSettingsModal(discord.ui.Modal):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
         # Log the changes
-        log_ch_id = config.get("log_channel")
-        if log_ch_id:
-            log_ch = interaction.client.get_channel(log_ch_id)
-            if log_ch:
-                log_embed = discord.Embed(
-                    title="📋 TOS Settings Modified",
-                    description=f"{interaction.user.mention} updated TOS messages",
-                    color=discord.Color.blue()
-                )
-                log_embed.timestamp = datetime.now()
-                await log_ch.send(embed=log_embed)
+        log_embed = discord.Embed(
+            title="📋 TOS Settings Modified",
+            description=f"{interaction.user.mention} updated TOS messages",
+            color=discord.Color.blue()
+        )
+        await send_log(interaction.client, log_embed)
 
 
 class BotStatusSettingsModal(discord.ui.Modal):
@@ -407,7 +396,6 @@ class BotStatusSettingsModal(discord.ui.Modal):
             return await interaction.response.send_message("❌ Status message cannot be empty", ephemeral=True)
 
         # Save changes
-        old_bot_status = config.get("bot_status", {})
         config["bot_status"] = {
             "enabled": enabled,
             "activity_type": activity_type,
@@ -437,20 +425,15 @@ class BotStatusSettingsModal(discord.ui.Modal):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
         # Log the changes
-        log_ch_id = config.get("log_channel")
-        if log_ch_id:
-            log_ch = interaction.client.get_channel(log_ch_id)
-            if log_ch:
-                log_embed = discord.Embed(
-                    title="🤖 Bot Status Settings Modified",
-                    description=f"{interaction.user.mention} updated bot status settings",
-                    color=discord.Color.blue()
-                )
-                log_embed.add_field(name="Enabled", value=str(enabled), inline=True)
-                log_embed.add_field(name="Activity", value=activity_type, inline=True)
-                log_embed.add_field(name="Message", value=message, inline=True)
-                log_embed.add_field(name="Status Type", value=status_type, inline=True)
-                log_embed.timestamp = datetime.now()
-                await log_ch.send(embed=log_embed)
+        log_embed = discord.Embed(
+            title="🤖 Bot Status Settings Modified",
+            description=f"{interaction.user.mention} updated bot status settings",
+            color=discord.Color.blue()
+        )
+        log_embed.add_field(name="Enabled", value=str(enabled), inline=True)
+        log_embed.add_field(name="Activity", value=activity_type, inline=True)
+        log_embed.add_field(name="Message", value=message, inline=True)
+        log_embed.add_field(name="Status Type", value=status_type, inline=True)
+        await send_log(interaction.client, log_embed)
                 
         print(f"[BOT-STATUS] {interaction.user} updated bot status: {activity_type} {message} ({status_type})")

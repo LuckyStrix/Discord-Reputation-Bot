@@ -1,143 +1,133 @@
 """Terms-of-service prompt shown when a new marketplace post is created."""
+import asyncio
 import time
 
 import discord
 
 from utils import db
 from utils.config import load_config
+from utils.threads import close_thread, update_thread_log
 from views.review import post_review_ui
 
-# Maps thread.id → timestamp when the TOS prompt was sent; messages posted
-# after that are deleted until the prompt is answered.
+DEFAULT_TOS_TIMEOUT = 30  # seconds
+
+# Maps thread.id → timestamp when the TOS prompt was sent. Messages posted
+# after that are deleted until the prompt is answered. Mirrors the
+# pending_tos table so on_message doesn't need a database query.
 pending_tos_timestamps: dict[int, float] = {}
+
+# Strong references to expiry tasks so they aren't garbage-collected
+_expiry_tasks: set[asyncio.Task] = set()
+
+
+def get_tos_timeout() -> int:
+    return int(load_config().get("tos_timeout_seconds", DEFAULT_TOS_TIMEOUT))
 
 
 class RepTOSView(discord.ui.View):
-    def __init__(
-        self,
-        thread: discord.Thread,
-        op_id: int,
-        timeout: float = 30.0
-    ):
-        # timeout is in seconds
-        super().__init__(timeout=timeout)
-        self.thread = thread
-        self.op_id = op_id
+    """
+    Persistent view: it carries no per-thread state, so one registered
+    instance handles every prompt, including ones sent before a restart.
+    """
 
-    @discord.ui.button(label='✅ I Agree', style=discord.ButtonStyle.success)
-    async def agree(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        if interaction.user.id != self.op_id:
-            return await interaction.response.send_message(
-                "Only the thread owner can accept the TOS.",
-                ephemeral=True
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    async def _claim(self, interaction: discord.Interaction) -> discord.Thread | None:
+        """Validate the click and mark the prompt answered. Returns the thread, or None if rejected."""
+        thread = interaction.channel
+        if not isinstance(thread, discord.Thread):
+            return None
+
+        if interaction.user.id != thread.owner_id:
+            await interaction.response.send_message(
+                "Only the thread owner can respond to the TOS.", ephemeral=True
             )
+            return None
 
-        # Stop the timeout and unblock the thread
-        self.stop()
-        pending_tos_timestamps.pop(self.thread.id, None)
+        if not db.resolve_pending_tos(thread.id):
+            # Already answered or timed out
+            await interaction.response.edit_message(content="⌛ This prompt has expired.", embed=None, view=None)
+            return None
 
-        # ─── Update the Thread Log with ✅ Accepted ───
-        logging_cog = interaction.client.get_cog("LoggingSystem")
-        if logging_cog:
-            await logging_cog.update_thread_log(
-                self.thread,
-                field_updates={"TOS Status": f"✅ Accepted at <t:{int(time.time())}:T>"}
-            )
+        pending_tos_timestamps.pop(thread.id, None)
+        return thread
+
+    @discord.ui.button(label='✅ I Agree', style=discord.ButtonStyle.success, custom_id="tos_agree")
+    async def agree(self, interaction: discord.Interaction, button: discord.ui.Button):
+        thread = await self._claim(interaction)
+        if not thread:
+            return
+
+        await interaction.response.defer()
+        await update_thread_log(
+            interaction.client, thread,
+            field_updates={"TOS Status": f"✅ Accepted at <t:{int(time.time())}:T>"}
+        )
 
         # Remove the TOS prompt and proceed to the review UI
-        await interaction.message.delete()
-        await post_review_ui(self.thread, self.op_id)
+        try:
+            await interaction.message.delete()
+        except discord.HTTPException:
+            pass
+        await post_review_ui(thread, thread.owner_id)
 
-    @discord.ui.button(label='❌ I Do Not Agree', style=discord.ButtonStyle.danger)
-    async def decline(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        if interaction.user.id != self.op_id:
-            return await interaction.response.send_message(
-                "Only the thread owner can decline the TOS.",
-                ephemeral=True
-            )
-
-        # Stop the timeout and unblock the thread
-        self.stop()
-        pending_tos_timestamps.pop(self.thread.id, None)
-
-        
-        # ─── Update the Thread Log with ❌ Declined ───
-        logging_cog = interaction.client.get_cog("LoggingSystem")
-        if logging_cog:
-            await logging_cog.update_thread_log(
-                self.thread,
-                field_updates={"TOS Status": f"❌ Declined at <t:{int(time.time())}:T>"}
-            )
+    @discord.ui.button(label='❌ I Do Not Agree', style=discord.ButtonStyle.danger, custom_id="tos_decline")
+    async def decline(self, interaction: discord.Interaction, button: discord.ui.Button):
+        thread = await self._claim(interaction)
+        if not thread:
+            return
 
         config = load_config()
-        # Edit the prompt to the decline response
-        await interaction.message.edit(
-            content=config['tos_decline_response'],
+        await interaction.response.edit_message(
+            content=config.get("tos_decline_response", "Marketplace terms not accepted. Thread will now be closed."),
+            embed=None,
             view=None
         )
-
-        # Archive & lock the thread
-        await self.thread.edit(archived=True, locked=True)
-        
-        # Update thread status in database
-        db.upsert_thread(
-            thread_id=self.thread.id,
-            channel_id=self.thread.parent_id,
-            guild_id=self.thread.guild.id,
-            name=self.thread.name,
-            owner_id=self.thread.owner_id,
-            jump_url=self.thread.jump_url,
-            archived=True,
-            locked=True
+        await update_thread_log(
+            interaction.client, thread,
+            field_updates={"TOS Status": f"❌ Declined at <t:{int(time.time())}:T>"}
         )
+        await close_thread(interaction.client, thread, "❌ Closed (TOS declined)")
 
-    async def on_timeout(self):
-        # Called if neither button is pressed within timeout
-        self.stop()
-        pending_tos_timestamps.pop(self.thread.id, None)
 
-        try:
-            print(f"[TOS] Thread {self.thread.id} timed out. Auto-closing.")
+async def expire_tos(client: discord.Client, thread_id: int) -> None:
+    """Close a thread whose TOS prompt was never answered."""
+    if not db.resolve_pending_tos(thread_id):
+        return  # Answered in the meantime
+    pending_tos_timestamps.pop(thread_id, None)
 
-            # ─── Update the Thread Log to show ❌ Timed Out ───
-            bot = self.thread._state._get_client()
-            logging_cog = bot.get_cog("LoggingSystem")
-            if logging_cog:
-                await logging_cog.update_thread_log(
-                    self.thread,
-                    field_updates={
-                        "TOS Status": f"⌛ Timed out at <t:{int(time.time())}:T>",
-                        "Thread Status": f"❌ Closed (timeout)"
-                    }
-                )
+    try:
+        thread = client.get_channel(thread_id) or await client.fetch_channel(thread_id)
+    except (discord.NotFound, discord.Forbidden):
+        db.mark_thread_closed(thread_id)  # Deleted or inaccessible; stop tracking it
+        return
 
-            # Notify in-thread
-            await self.thread.send(
-                "⏱️ No response to TOS in time. This post has been auto-closed."
-            )
+    try:
+        print(f"[TOS] Thread {thread_id} timed out. Auto-closing.")
+        await update_thread_log(
+            client, thread,
+            field_updates={"TOS Status": f"⌛ Timed out at <t:{int(time.time())}:T>"}
+        )
+        await thread.send("⏱️ No response to TOS in time. This post has been auto-closed.")
+        await close_thread(client, thread, "❌ Closed (TOS timeout)")
+    except Exception as e:
+        print(f"[ERROR] Auto-close on TOS timeout failed for {thread_id}: {e}")
 
-            # Archive & lock
-            await self.thread.edit(archived=True, locked=True)
-            
-            # Update thread status in database
-            db.upsert_thread(
-                thread_id=self.thread.id,
-                channel_id=self.thread.parent_id,
-                guild_id=self.thread.guild.id,
-                name=self.thread.name,
-                owner_id=self.thread.owner_id,
-                jump_url=self.thread.jump_url,
-                archived=True,
-                locked=True
-            )
 
-        except Exception as e:
-            print(f"[ERROR] Auto-close on timeout failed: {e}")
+def schedule_tos_expiry(client: discord.Client, thread_id: int, expires_at: float) -> None:
+    async def wait_then_expire():
+        await client.wait_until_ready()
+        await asyncio.sleep(max(0.0, expires_at - time.time()))
+        await expire_tos(client, thread_id)
+
+    task = asyncio.create_task(wait_then_expire())
+    _expiry_tasks.add(task)
+    task.add_done_callback(_expiry_tasks.discard)
+
+
+def restore_pending_tos(client: discord.Client) -> None:
+    """Reload prompts that were pending when the bot stopped and re-arm their timeouts."""
+    for row in db.get_pending_tos():
+        pending_tos_timestamps[row["thread_id"]] = row["prompted_at"]
+        schedule_tos_expiry(client, row["thread_id"], row["expires_at"])

@@ -1,12 +1,11 @@
 """Admin cog: configuration and admin-management slash commands."""
-from datetime import datetime
-
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from utils.checks import admin_only, is_admin
-from utils.config import load_config, save_config
+from utils.config import get_forum_ids, load_config, save_config
+from utils.threads import send_log
 from views.settings import SettingsView
 
 
@@ -20,7 +19,7 @@ class Admin(commands.Cog):
     async def channel_set(self, interaction: discord.Interaction, channel: discord.ForumChannel):
         config = load_config()
         config.setdefault("forums", [])
-        if channel.id not in config["forums"]:
+        if channel.id not in get_forum_ids(config):
             config["forums"].append(channel.id)
             save_config(config)
             await interaction.response.send_message(
@@ -273,20 +272,14 @@ class Admin(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
         
         # Log the change to log channel
-        config_log = load_config()
-        log_ch_id = config_log.get("log_channel")
-        if log_ch_id:
-            log_ch = interaction.client.get_channel(log_ch_id)
-            if log_ch:
-                log_embed = discord.Embed(
-                    title="🔧 Auto-Close Setting Changed",
-                    description=f"{interaction.user.mention} **{'enabled' if enabled else 'disabled'}** the auto-close feature",
-                    color=color
-                )
-                log_embed.add_field(name="Previous Status", value="✅ Enabled" if old_status else "❌ Disabled", inline=True)
-                log_embed.add_field(name="New Status", value=status_text, inline=True)
-                log_embed.timestamp = datetime.now()
-                await log_ch.send(embed=log_embed)
+        log_embed = discord.Embed(
+            title="🔧 Auto-Close Setting Changed",
+            description=f"{interaction.user.mention} **{'enabled' if enabled else 'disabled'}** the auto-close feature",
+            color=color
+        )
+        log_embed.add_field(name="Previous Status", value="✅ Enabled" if old_status else "❌ Disabled", inline=True)
+        log_embed.add_field(name="New Status", value=status_text, inline=True)
+        await send_log(interaction.client, log_embed)
         
         print(f"[AUTO-CLOSE] {interaction.user} ({'enabled' if enabled else 'disabled'}) auto-close feature")
 
@@ -324,18 +317,12 @@ class Admin(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
         
         # Log the change
-        config_log = load_config()
-        log_ch_id = config_log.get("log_channel")
-        if log_ch_id:
-            log_ch = interaction.client.get_channel(log_ch_id)
-            if log_ch:
-                log_embed = discord.Embed(
-                    title="⏰ Auto-Close Timer Changed",
-                    description=f"{interaction.user.mention} changed auto-close timer from **{old_hours}h** to **{hours}h**",
-                    color=discord.Color.blue()
-                )
-                log_embed.timestamp = datetime.now()
-                await log_ch.send(embed=log_embed)
+        log_embed = discord.Embed(
+            title="⏰ Auto-Close Timer Changed",
+            description=f"{interaction.user.mention} changed auto-close timer from **{old_hours}h** to **{hours}h**",
+            color=discord.Color.blue()
+        )
+        await send_log(interaction.client, log_embed)
         
         print(f"[AUTO-CLOSE] {interaction.user} changed auto-close timer to {hours} hours")
 
@@ -350,20 +337,14 @@ class Admin(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
         # Log settings access
-        config = load_config()
-        log_ch_id = config.get("log_channel")
-        if log_ch_id:
-            log_ch = interaction.client.get_channel(log_ch_id)
-            if log_ch:
-                log_embed = discord.Embed(
-                    title="⚙️ Settings Panel Accessed",
-                    description=f"{interaction.user.mention} opened the settings dashboard",
-                    color=discord.Color.blue()
-                )
-                log_embed.timestamp = datetime.now()
-                await log_ch.send(embed=log_embed)
+        log_embed = discord.Embed(
+            title="⚙️ Settings Panel Accessed",
+            description=f"{interaction.user.mention} opened the settings panel",
+            color=discord.Color.blue()
+        )
+        await send_log(interaction.client, log_embed)
 
-        print(f"[SETTINGS] {interaction.user} accessed settings dashboard")
+        print(f"[SETTINGS] {interaction.user} opened the settings panel")
 
 
 async def setup(bot: commands.Bot):

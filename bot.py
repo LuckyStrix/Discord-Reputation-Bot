@@ -1,46 +1,62 @@
 # bot.py - Entry point for Discord Forum Rep Bot
+import asyncio
+import os
+import sys
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
-import os
-import asyncio
-from utils.db import init_db
-from views.review import ReviewButtonView
-from views.tos import RepTOSView
 
-# Load environment variables from .env
-load_dotenv()
+from utils.config import CONFIG_PATH, PROJECT_ROOT, load_config
+from utils.db import init_db
+from utils.presence import presence_from_config
+
+# Console output contains emoji; don't crash when it is redirected to a file
+# or a console that can't encode them (common on Windows).
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(errors="replace")
+
+# Load environment variables from .env next to this file
+load_dotenv(PROJECT_ROOT / ".env")
+
+EXTENSIONS = ("cogs.logging_system", "cogs.reviews", "cogs.admin")
 
 # Configure bot intents
 intents = discord.Intents.default()
-intents.message_content = True
-intents.guilds = True
-intents.members = True
-intents.messages = True
+intents.message_content = True  # needed for the !sync prefix command
+intents.members = True          # member cache for admin lists and the leaderboard
 
-# Initialize bot. Mentions are limited to users so text from config or
-# user input can never ping @everyone/@here or roles.
-bot = commands.Bot(
+
+class RepBot(commands.Bot):
+    async def setup_hook(self):
+        init_db()
+        for extension in EXTENSIONS:
+            await self.load_extension(extension)
+
+        # Set the configured presence before connecting so it's sent on login
+        activity, status = presence_from_config(load_config())
+        if activity:
+            self.activity = activity
+            self.status = status
+
+
+# Mentions are limited to users so text from config or user input can never
+# ping @everyone/@here or roles.
+bot = RepBot(
     command_prefix="!",
     intents=intents,
     allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True),
 )
 
+
 @bot.event
 async def on_ready():
-    """
-    Called when the bot is ready. Initializes the database,
-    registers persistent views, and prints startup confirmation.
-    """
+    """Called when the bot is ready (and again after reconnects)."""
     print(f"✅ Logged in as {bot.user}")
-    init_db()
+    print("✅ Ready. Use !sync to sync slash commands (or !sync guild for this server only).")
 
-    # Register persistent views for button survival
-    bot.add_view(ReviewButtonView())
-    bot.add_view(RepTOSView())
-
-    print("✅ Ready. Use !sync to globally sync slash commands.")
 
 @bot.command(name="sync")
 @commands.is_owner()
@@ -88,15 +104,31 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
     else:
         await interaction.response.send_message(message, ephemeral=True)
 
-async def main():
-    """
-    Main entrypoint for loading cogs and starting the bot.
-    """
+
+def check_setup() -> str | None:
+    """Return the token, or None after explaining what's missing."""
+    token = os.getenv("DISCORD_TOKEN", "").strip()
+    if not token or token == "YOUR_DISCORD_BOT_TOKEN_HERE":
+        print("❌ DISCORD_TOKEN is not set. Copy .env.example to .env and add your bot token.")
+        return None
+    if not CONFIG_PATH.exists():
+        print(f"❌ {CONFIG_PATH} not found. Copy data/config.yaml.example to data/config.yaml and fill it in.")
+        return None
+    return token
+
+
+async def main(token: str):
+    # Route discord.py's own log messages (rate limits, gateway issues) to the console
+    discord.utils.setup_logging()
     async with bot:
-        await bot.load_extension("cogs.logging_system")
-        await bot.load_extension("cogs.reviews")
-        await bot.load_extension("cogs.admin")
-        await bot.start(os.getenv("DISCORD_TOKEN"))
+        await bot.start(token)
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    token = check_setup()
+    if token is None:
+        sys.exit(1)
+    try:
+        asyncio.run(main(token))
+    except KeyboardInterrupt:
+        pass

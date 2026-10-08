@@ -46,6 +46,9 @@ tos_message: |
 tos_decline_response: |
   Marketplace terms not accepted. Thread will now be closed.
 
+# Seconds the post owner has to answer the TOS prompt before the post is closed
+tos_timeout_seconds: 30
+
 # ═══════════════════════════════════════════════════════════
 #                 AUTO-CLOSE SETTINGS (V3.1)
 # ═══════════════════════════════════════════════════════════
