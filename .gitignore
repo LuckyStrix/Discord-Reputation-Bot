@@ -1,15 +1,23 @@
 # Environment variables
 .env
+.env.*
+!.env.example
 
 # Python cache
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+*.log
 
 # Bot data (local config and SQLite database)
 data/config.yaml
 data/*.db
 data/*.db-*
+data/.config-*.yaml
 
 # Virtual environment
 .venv/

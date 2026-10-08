@@ -6,11 +6,13 @@ on:
 
 jobs:
   summary:
+    # Only summarize issues from people with a role in the repository, so
+    # strangers can't make the bot post arbitrary text
+    if: contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)
     runs-on: ubuntu-latest
     permissions:
       issues: write
       models: read
-      contents: read
 
     steps:
       - name: Run AI inference

@@ -52,6 +52,10 @@ class Reviews(commands.Cog):
                 print(f"[ERROR] Failed to auto-close thread {thread_data['thread_id']}: {e}")
 
     async def _auto_close(self, thread_id: int):
+        # The owner may have cancelled (or someone closed it) since the list was read
+        if not db.is_auto_close_due(thread_id):
+            return
+
         # get_channel only sees cached (active) threads; fetch finds archived ones too
         try:
             thread = self.bot.get_channel(thread_id) or await self.bot.fetch_channel(thread_id)
@@ -68,11 +72,15 @@ class Reviews(commands.Cog):
         )
         embed.add_field(
             name="Why did this happen?",
-            value="To keep the marketplace clean, threads automatically close after receiving reviews. This helps prevent clutter from completed transactions.",
+            value=(
+                "To keep the marketplace clean, threads automatically close after receiving reviews. "
+                "This helps prevent clutter from completed transactions."
+            ),
             inline=False
         )
-        await thread.send(embed=embed)
-        await close_thread(self.bot, thread, "🤖 Auto-closed")
+        # Locks before posting the notice, so a failure (e.g. missing Manage
+        # Threads) can't make the notice repeat every 10 minutes
+        await close_thread(self.bot, thread, "🤖 Auto-closed", embed)
 
         log_embed = discord.Embed(
             title="🤖 Thread Auto-Closed",
@@ -122,7 +130,7 @@ class Reviews(commands.Cog):
             timeout_secs = get_tos_timeout()
             prompted_at = time.time()
             expires_at = prompted_at + timeout_secs
-            tos_message_text = config.get("tos_message", "").replace("{timeout}", f"<t:{int(expires_at)}:R>")
+            tos_message_text = config["tos_message"].replace("{timeout}", f"<t:{int(expires_at)}:R>")[:4096]
 
             embed = discord.Embed(
                 title="📋 Marketplace Terms of Service",
@@ -133,7 +141,13 @@ class Reviews(commands.Cog):
             # Record the prompt before sending so messages can't slip through
             db.add_pending_tos(thread.id, thread.owner_id, prompted_at, expires_at)
             pending_tos_timestamps[thread.id] = prompted_at
-            await thread.send(content=f"<@{thread.owner_id}>", embed=embed, view=RepTOSView())
+            try:
+                await thread.send(content=f"<@{thread.owner_id}>", embed=embed, view=RepTOSView())
+            except discord.HTTPException:
+                # No prompt was shown, so don't hold the thread hostage
+                db.resolve_pending_tos(thread.id)
+                pending_tos_timestamps.pop(thread.id, None)
+                raise
             schedule_tos_expiry(self.bot, thread.id, expires_at)
 
             logging_cog = self.bot.get_cog("LoggingSystem")
@@ -149,6 +163,13 @@ class Reviews(commands.Cog):
 
         except Exception as e:
             print(f"[ERROR] on_thread_create: {e}")
+
+    @commands.Cog.listener()
+    async def on_thread_update(self, before: discord.Thread, after: discord.Thread):
+        # Keep the stored state in step with Discord, e.g. when a moderator
+        # reopens a post the bot closed
+        if (before.locked, before.archived) != (after.locked, after.archived):
+            db.set_thread_state(after.id, archived=after.archived, locked=after.locked)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -218,12 +239,16 @@ class Reviews(commands.Cog):
                 name = member.display_name if member else "Former member"
                 embed.add_field(
                     name=f"{i}. {name}",
-                    value=f"<@{user_id}> • {star_bar(avg_rating)} {avg_rating:.1f}/10 ({total_reviews} review{'s' if total_reviews != 1 else ''})",
+                    value=(
+                        f"<@{user_id}> • {star_bar(avg_rating)} {avg_rating:.1f}/10 "
+                        f"({total_reviews} review{'s' if total_reviews != 1 else ''})"
+                    ),
                     inline=False
                 )
         await interaction.response.send_message(embed=embed, ephemeral=False)
 
-    @app_commands.command(name="send_review_ui", description="Send the rate/close interface to the current thread (admin only).")
+    @app_commands.command(name="send_review_ui",
+                          description="Send the rate/close interface to the current thread (admin only).")
     @app_commands.guild_only()
     @admin_only()
     async def send_review_ui(self, interaction: discord.Interaction):

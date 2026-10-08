@@ -1,5 +1,7 @@
 """Keeps one log-channel embed per marketplace thread up to date."""
+import asyncio
 import time
+from collections import defaultdict
 from typing import Any, Dict, Optional
 
 import discord
@@ -14,13 +16,21 @@ EMPTY_EVENTS = "*No events yet*"
 
 
 class LoggingSystem(commands.Cog):
+    """
+    Logging must never break the feature that triggered it, so every public
+    method here swallows Discord errors (e.g. no permission in the log channel).
+    """
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        # Serialises read-modify-write of each thread's embed so concurrent
+        # events aren't lost and the embed isn't created twice
+        self._locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
         print("📋 Logging system loaded")
 
     async def get_log_channel(self) -> Optional[discord.TextChannel]:
         config = load_config()
-        log_ch_id = config.get("log_channel")
+        log_ch_id = config["log_channel"]
         if not log_ch_id:
             return None
         log_ch = self.bot.get_channel(log_ch_id)
@@ -36,8 +46,9 @@ class LoggingSystem(commands.Cog):
             return None
         try:
             return await log_ch.fetch_message(info["log_message_id"])
-        except (discord.NotFound, discord.Forbidden):
-            return None
+        except discord.NotFound:
+            return None  # Deleted; a new one will be created
+        # Other errors propagate so a transient failure doesn't create a duplicate embed
 
     async def create_thread_log(
         self,
@@ -47,6 +58,14 @@ class LoggingSystem(commands.Cog):
         color: Optional[discord.Color] = None,
         fields: Optional[Dict[str, str]] = None
     ) -> Optional[discord.Message]:
+        async with self._locks[thread.id]:
+            try:
+                return await self._create_thread_log(thread, title, description, color, fields)
+            except discord.HTTPException as e:
+                print(f"[WARN] Could not create thread log for {thread.id}: {e}")
+                return None
+
+    async def _create_thread_log(self, thread, title, description, color, fields) -> Optional[discord.Message]:
         log_ch = await self.get_log_channel()
         if not log_ch:
             return None
@@ -81,13 +100,20 @@ class LoggingSystem(commands.Cog):
         event_additions: Optional[Dict[str, str]] = None,
         embed_updates: Optional[Dict[str, Any]] = None
     ):
+        async with self._locks[thread.id]:
+            try:
+                await self._update_thread_log(thread, field_updates, event_additions, embed_updates)
+            except discord.HTTPException as e:
+                print(f"[WARN] Could not update thread log for {thread.id}: {e}")
+
+    async def _update_thread_log(self, thread, field_updates, event_additions, embed_updates):
         log_ch = await self.get_log_channel()
         if not log_ch:
             return
 
         msg = await self._fetch_thread_log(log_ch, thread.id)
         if not msg:
-            msg = await self.create_thread_log(thread)
+            msg = await self._create_thread_log(thread, None, None, None, None)
         if not msg or not msg.embeds:
             return
 
@@ -121,10 +147,7 @@ class LoggingSystem(commands.Cog):
                     value = value.split("\n", 1)[1]
                 self._set_field(embed, field_name, value[-FIELD_LIMIT:])
 
-        try:
-            await msg.edit(embed=embed)
-        except discord.HTTPException as e:
-            print(f"[WARN] Could not update thread log for {thread.id}: {e}")
+        await msg.edit(embed=embed)
 
     @staticmethod
     def _set_field(embed: discord.Embed, name: str, value: str) -> None:

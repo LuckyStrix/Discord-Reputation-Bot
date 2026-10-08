@@ -18,4 +18,21 @@ def review_stars(rating: int) -> str:
 def generate_star_rating(avg_rating: float, total_reviews: int) -> str | None:
     if total_reviews == 0:
         return None
-    return f"Rating: {star_bar(avg_rating)} ({avg_rating:.1f}/10 from {total_reviews} review{'s' if total_reviews != 1 else ''})"
+    plural = "s" if total_reviews != 1 else ""
+    return f"Rating: {star_bar(avg_rating)} ({avg_rating:.1f}/10 from {total_reviews} review{plural})"
+
+
+def capped_lines(lines: list[str], limit: int = 1024) -> str:
+    """
+    Join lines for an embed field, stopping before Discord's length limit
+    and noting how many entries were left out.
+    """
+    shown: list[str] = []
+    for i, line in enumerate(lines):
+        remaining = len(lines) - i
+        suffix = f"\n• … and {remaining} more"
+        if len("\n".join(shown + [line])) + len(suffix) > limit:
+            shown.append(suffix.strip())
+            break
+        shown.append(line)
+    return "\n".join(shown) or "None"

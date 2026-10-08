@@ -1,10 +1,11 @@
 """Loads the categorized flavour messages shown on the review panel."""
+from utils.config import PROJECT_ROOT
 
 
 def load_rep_messages():
     cats = {"good": [], "neutral": [], "bad": []}
     try:
-        with open("assets/rep_messages.txt", encoding="utf-8") as f:
+        with open(PROJECT_ROOT / "assets" / "rep_messages.txt", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#"):

@@ -50,21 +50,23 @@ Sets how long after a post's first review it closes (1–168). Only affects time
 Posts a review panel in the current thread. Useful for posts created before the bot was added, or if the panel was deleted.
 
 ### `/admin_add <user>` / `/admin_remove <user>`
-Adds or removes a user in `admin_ids`. `/admin_remove` won't remove the last listed admin if that's you. It can't remove admin rights that come from a role or from the server Administrator permission.
+Adds or removes a user in `admin_ids`. `/admin_remove` also accepts people who have left the server, and won't remove the last listed admin if that's you. It can't remove admin rights that come from a role or from the server Administrator permission, and says so if the user is still an admin that way.
 
 ### `/admin_role_add <role>` / `/admin_role_remove <role>`
-Adds or removes a role in `admin_role_ids`.
+Adds or removes a role in `admin_role_ids`. @everyone and bot-managed roles can't be added.
 
 ### `/admin_list`
 Lists configured admin users and roles.
 
 ## Owner command
 
-### `!sync [guild]`
+### `!sync [global]`
 Registers slash commands with Discord. Only the bot's owner can use it; anyone else is ignored.
 
-- `!sync guild`: this server only, appears immediately
-- `!sync`: every server, can take up to an hour
+- `!sync`: your server (`guild_id`, or the current server if it isn't set), appears immediately
+- `!sync global`: every server, can take up to an hour
+
+Each form removes the other's registrations, so commands never appear twice.
 
 ## Buttons
 

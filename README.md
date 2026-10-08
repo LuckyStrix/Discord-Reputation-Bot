@@ -14,7 +14,7 @@ A reputation system for Discord marketplace communities. Members review each oth
 
 ## 🆕 What's New in V3.2
 
-- 🔒 **Security fixes**: every admin command is permission-checked, `!sync` is owner-only, and closed posts can no longer receive reviews
+- 🔒 **Security fixes**: every admin command is permission-checked, admin rights are limited to your own server, `!sync` is owner-only, and closed posts can no longer receive reviews
 - ⏰ **Reliable auto-close**: correct timing in every time zone, and archived posts are still closed
 - 🔁 **Restart-safe**: TOS prompts, buttons and log embeds keep working after the bot restarts
 - 🧹 **Cleaner threads**: the review panel updates in place instead of reposting after every review
@@ -40,7 +40,7 @@ A reputation system for Discord marketplace communities. Members review each oth
 - Owners can close their own posts; closing a post with no reviews asks for confirmation
 
 ### 👑 Administration
-- Server administrators, listed users and listed roles are bot admins
+- Server administrators, listed users and listed roles are bot admins (only in the server set by `guild_id`)
 - `/settings` opens an interactive panel for auto-close, TOS text and bot status
 - Every action is logged to a staff channel, with one live-updating embed per post
 
@@ -83,7 +83,7 @@ Full instructions, including Discord Developer Portal setup, are in **[docs/SETU
 3. **Configure it:**
    ```bash
    cp .env.example .env                              # add your bot token
-   cp data/config.yaml.example data/config.yaml      # add your forum/log channel IDs
+   cp data/config.yaml.example data/config.yaml      # add your server, forum and log channel IDs
    ```
 4. **Install and run:**
    ```bash
@@ -92,8 +92,8 @@ Full instructions, including Discord Developer Portal setup, are in **[docs/SETU
    pip install -r requirements.txt
    python bot.py
    ```
-   On Windows you can instead double-click `RunMe.bat`.
-5. **Register slash commands:** as the bot's owner, type `!sync guild` in your server (instant) or `!sync` (global, up to an hour).
+   On Windows you can instead double-click `RunMe.bat`: **[2]** creates the virtual environment and installs everything, **[1]** starts the bot.
+5. **Register slash commands:** as the bot's owner, type `!sync` in your server. They appear immediately.
 
 ## 💬 Commands
 
@@ -109,7 +109,7 @@ Full instructions, including Discord Developer Portal setup, are in **[docs/SETU
 | `/send_review_ui` | Admins | Post the review panel in the current thread |
 | `/admin_add`, `/admin_remove`, `/admin_list` | Admins | Manage admin users |
 | `/admin_role_add`, `/admin_role_remove` | Admins | Manage admin roles |
-| `!sync [guild]` | Bot owner | Register slash commands |
+| `!sync [global]` | Bot owner | Register slash commands |
 
 Details and examples: **[docs/COMMANDS.md](docs/COMMANDS.md)**.
 
@@ -124,9 +124,9 @@ Details and examples: **[docs/COMMANDS.md](docs/COMMANDS.md)**.
 
 ## ❓ Troubleshooting
 
-**Slash commands don't appear.** Run `!sync guild` in your server as the bot owner. A global `!sync` can take up to an hour.
+**Slash commands don't appear.** Run `!sync` in your server as the bot owner.
 
-**"Only admins can use this command."** Add your user ID to `admin_ids` in `data/config.yaml`, or have a server administrator run `/admin_add` for you.
+**"Only admins can use this command."** Check that `guild_id` in `data/config.yaml` is your server's ID, then add your user ID to `admin_ids` (or have a server administrator run `/admin_add` for you).
 
 **The bot doesn't respond to new posts.** Check that the forum's ID is in `forums` (or add it with `/channel_set`) and that the bot can view the forum and send messages in threads.
 
@@ -142,7 +142,7 @@ pytest
 flake8 .
 ```
 
-CI runs the same checks on Python 3.11–3.14 for every push and pull request.
+CI runs the same checks on Python 3.11–3.14 for pull requests and pushes to `main`.
 
 ## 🤝 Contributing
 

@@ -9,9 +9,13 @@ from utils.checks import is_admin
 from utils.formatting import generate_star_rating, review_stars, star_bar
 
 
-def make_member(user_id=1, administrator=False, role_ids=()):
+HOME = 555
+
+
+def make_member(user_id=1, administrator=False, role_ids=(), guild_id=HOME):
     member = MagicMock(spec=discord.Member)
     member.id = user_id
+    member.guild.id = guild_id
     member.guild_permissions.administrator = administrator
     member.roles = [MagicMock(id=r) for r in role_ids]
     return member
@@ -25,15 +29,43 @@ def test_star_rendering():
     assert generate_star_rating(8, 1) == "Rating: ⭐⭐⭐⭐☆ (8.0/10 from 1 review)"
 
 
-def test_config_save_keeps_order_and_emoji(temp_config):
+def test_config_save_keeps_order_comments_and_emoji(temp_config):
+    keys = list(yaml.safe_load(temp_config.read_text(encoding="utf-8")))
     data = config.load_config()
-    keys = list(data)
     data["tos_decline_response"] = "Nope 🚫"
     config.save_config(data)
 
     raw = temp_config.read_text(encoding="utf-8")
     assert "Nope 🚫" in raw
+    assert "# Example: Marketplace forum" in raw
     assert list(yaml.safe_load(raw)) == keys
+
+
+def test_config_normalizes_hand_edited_values(temp_config):
+    lines = [
+        "guild_id: '55'",
+        "forums:",
+        "admin_ids:",
+        "  - '42'",
+        "  - not-a-number",
+        "log_channel: '7'",
+        "auto_close_hours: '999'",
+        "auto_close_enabled: 'false'",
+        "bot_status:",
+    ]
+    temp_config.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    data = config.load_config()
+    assert data["guild_id"] == 55
+    assert data["forums"] == []
+    assert data["admin_ids"] == [42]
+    assert data["log_channel"] == 7
+    assert data["auto_close_hours"] == 168
+    assert data["auto_close_enabled"] is False
+    assert data["bot_status"]["activity_type"] == "watching"
+
+    # Saving doesn't add keys that were only filled in with defaults
+    config.save_config(data)
+    assert "tos_timeout_seconds" not in temp_config.read_text(encoding="utf-8")
 
 
 def test_config_reloads_after_external_edit(temp_config):
@@ -58,6 +90,7 @@ def test_get_forum_ids_accepts_strings():
 
 def test_is_admin(temp_config):
     data = config.load_config()
+    data["guild_id"] = HOME
     data["admin_ids"] = [42]
     data["admin_role_ids"] = [7]
     config.save_config(data)
@@ -68,3 +101,24 @@ def test_is_admin(temp_config):
     assert not is_admin(make_member(1, role_ids=[8]))
     # Users outside a guild (DMs) are never admins
     assert not is_admin(MagicMock(spec=discord.User, id=42))
+
+
+def test_admin_rights_only_apply_in_home_server(temp_config):
+    data = config.load_config()
+    data["guild_id"] = HOME
+    data["admin_ids"] = [42]
+    config.save_config(data)
+
+    # Being Administrator of some other server the bot was invited to grants nothing
+    assert not is_admin(make_member(1, administrator=True, guild_id=999))
+    assert not is_admin(make_member(42, guild_id=999))
+
+
+def test_without_home_server_administrator_is_not_enough(temp_config):
+    data = config.load_config()
+    data["guild_id"] = None
+    data["admin_ids"] = [42]
+    config.save_config(data)
+
+    assert not is_admin(make_member(1, administrator=True, guild_id=999))
+    assert is_admin(make_member(42, guild_id=999))

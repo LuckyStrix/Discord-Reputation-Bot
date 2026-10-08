@@ -1,6 +1,10 @@
 # How Posts Are Closed
 
-Closing a post archives and locks the thread, records it in the database and updates the post's log embed. Buttons in a closed post reply "🔒 This post is closed." and do nothing else.
+Closing a post locks the thread, posts the closing message, archives the thread, records it in the database and updates the post's log embed. The thread is locked first, so the closing message only appears if closing actually worked; if the bot lacks **Manage Threads**, the person who clicked gets a private error instead.
+
+A post counts as closed when it is **locked**. Discord also archives quiet posts by itself; those stay usable. If a moderator unlocks a closed post, its buttons work again.
+
+Buttons in a closed post reply "🔒 This post is closed." and do nothing else.
 
 ## Close Post button
 

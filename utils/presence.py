@@ -47,3 +47,12 @@ async def apply_bot_status(bot: discord.Client, activity_type: str, message: str
         print(f"[BOT-STATUS] Updated bot status: {activity_type} {message} ({status_type})")
     except Exception as e:
         print(f"[ERROR] Failed to update bot status: {e}")
+
+
+async def clear_bot_status(bot: discord.Client):
+    """Remove the custom activity while the bot is connected."""
+    try:
+        await bot.change_presence(activity=None, status=discord.Status.online)
+        print("[BOT-STATUS] Custom status cleared")
+    except Exception as e:
+        print(f"[ERROR] Failed to clear bot status: {e}")

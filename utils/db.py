@@ -212,6 +212,13 @@ def mark_thread_closed(thread_id: int) -> None:
         conn.execute("UPDATE threads SET archived = TRUE, locked = TRUE WHERE thread_id = ?", (thread_id,))
 
 
+def set_thread_state(thread_id: int, archived: bool, locked: bool) -> None:
+    """Mirror a tracked thread's archived/locked state from Discord (e.g. a moderator reopened it)."""
+    with closing(_connect()) as conn, conn:
+        conn.execute("UPDATE threads SET archived = ?, locked = ? WHERE thread_id = ?",
+                     (archived, locked, thread_id))
+
+
 def get_thread_info(thread_id: int) -> Optional[dict]:
     """
     Get thread information from the database.
@@ -275,9 +282,23 @@ def get_threads_to_auto_close() -> List[dict]:
             WHERE auto_close_scheduled IS NOT NULL
             AND auto_close_scheduled <= CURRENT_TIMESTAMP
             AND auto_close_cancelled = FALSE
-            AND archived = FALSE
+            AND locked = FALSE
         """).fetchall()
     return [dict(row) for row in rows]
+
+
+def is_auto_close_due(thread_id: int) -> bool:
+    """Re-check a single thread right before closing it (the owner may have just cancelled)."""
+    with closing(_connect()) as conn:
+        row = conn.execute("""
+            SELECT 1 FROM threads
+            WHERE thread_id = ?
+            AND auto_close_scheduled IS NOT NULL
+            AND auto_close_scheduled <= CURRENT_TIMESTAMP
+            AND auto_close_cancelled = FALSE
+            AND locked = FALSE
+        """, (thread_id,)).fetchone()
+    return row is not None
 
 
 # ─── Thread participants ────────────────────────────────────────────────────

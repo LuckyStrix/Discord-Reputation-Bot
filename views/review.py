@@ -1,4 +1,5 @@
 """In-thread review UI: review button, review modal, close flow and auto-close notice."""
+import asyncio
 import random
 import time
 
@@ -9,20 +10,28 @@ from utils.checks import is_admin
 from utils.config import load_config
 from utils.formatting import generate_star_rating, review_stars
 from utils.messages import load_rep_messages
-from utils.threads import close_thread, send_log, update_thread_log
+from utils.interactions import SafeModal, SafeView
+from utils.threads import close_thread_for, send_log, update_thread_log
 
 DEFAULT_NO_REP_MESSAGE = "No reviews yet. Be the first!"
+IMAGE_EXTENSIONS = (".gif", ".png", ".jpg", ".jpeg", ".webp")
+# Discord allows 3 seconds before the first response (here: the review modal)
+HISTORY_CHECK_TIMEOUT = 2.0
 
 
 def is_thread_closed(thread: discord.abc.GuildChannel) -> bool:
     """
-    True if the post has been closed. Buttons in locked/archived threads still
-    fire interactions, so every review/close action must check this.
+    True if the post has been closed. Buttons in closed threads still fire
+    interactions, so every review/close action must check this.
+
+    Closed means locked: Discord also archives quiet posts on its own, and
+    those must stay usable. The database copy is kept in sync by
+    on_thread_update, so a post a moderator unlocks becomes usable again.
     """
-    if getattr(thread, "locked", False) or getattr(thread, "archived", False):
+    if getattr(thread, "locked", False):
         return True
     info = db.get_thread_info(thread.id)
-    return bool(info and (info["locked"] or info["archived"]))
+    return bool(info and info["locked"])
 
 
 async def _reject_if_not_open_thread(interaction: discord.Interaction) -> bool:
@@ -51,13 +60,14 @@ def _ensure_thread_tracked(thread: discord.Thread) -> None:
         )
 
 
-class AutoCloseView(discord.ui.View):
+class AutoCloseView(SafeView):
     """Persistent view: the thread comes from the interaction, so it works after restarts."""
 
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(custom_id="cancel_auto_close", label="I have multiple items - Keep thread open", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(custom_id="cancel_auto_close", label="I have multiple items - Keep thread open",
+                       style=discord.ButtonStyle.secondary)
     async def cancel_auto_close(self, interaction: discord.Interaction, button: discord.ui.Button):
         if await _reject_if_not_open_thread(interaction):
             return
@@ -90,7 +100,7 @@ class AutoCloseView(discord.ui.View):
         print(f"[AUTO-CLOSE] {interaction.user} cancelled auto-close for thread {thread.id} ({thread.name})")
 
 
-class ReviewModal(discord.ui.Modal):
+class ReviewModal(SafeModal):
     def __init__(self, thread: discord.Thread, receiver_id: int, panel_message: discord.Message | None = None):
         super().__init__(title="Leave a Review")
         self.thread = thread
@@ -156,18 +166,19 @@ class ReviewModal(discord.ui.Modal):
             color=discord.Color.green()
         )
         if notes_value:
-            embed.add_field(name="Review Notes", value=notes_value[:100] + "..." if len(notes_value) > 100 else notes_value, inline=False)
+            preview = notes_value[:100] + "..." if len(notes_value) > 100 else notes_value
+            embed.add_field(name="Review Notes", value=preview, inline=False)
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
         # Notify the thread owner; the first review also starts the auto-close timer
         mention_message = f"<@{self.receiver_id}> You received a **{rating_value}/10** review!"
         config = load_config()
-        auto_close_hours = config.get("auto_close_hours", 24)
+        auto_close_hours = config["auto_close_hours"]
         close_time = time.time() + auto_close_hours * 60 * 60
 
         scheduled = False
-        if config.get("auto_close_enabled", True):
+        if config["auto_close_enabled"]:
             _ensure_thread_tracked(self.thread)
             scheduled = db.schedule_thread_auto_close(self.thread.id, close_time)
 
@@ -179,14 +190,20 @@ class ReviewModal(discord.ui.Modal):
             )
             auto_close_embed.add_field(
                 name="Why?",
-                value="Threads auto-close after the first review to keep the marketplace clean. If you have multiple items in this listing, click the button below.",
+                value=(
+                    "Threads auto-close after the first review to keep the marketplace clean. "
+                    "If you have multiple items in this listing, click the button below."
+                ),
                 inline=False
             )
             await self.thread.send(content=mention_message, embed=auto_close_embed, view=AutoCloseView())
 
             log_embed = discord.Embed(
                 title="⏰ Auto-Close Scheduled",
-                description=f"Thread [{self.thread.name}]({self.thread.jump_url}) scheduled to auto-close <t:{int(close_time)}:R>",
+                description=(
+                    f"Thread [{self.thread.name}]({self.thread.jump_url}) "
+                    f"scheduled to auto-close <t:{int(close_time)}:R>"
+                ),
                 color=discord.Color.orange()
             )
             log_embed.add_field(name="Thread Owner", value=f"<@{self.receiver_id}>", inline=True)
@@ -215,7 +232,7 @@ class ReviewModal(discord.ui.Modal):
         await self.thread.send(embed=panel_embed, view=ReviewButtonView())
 
 
-class CloseConfirmationModal(discord.ui.Modal):
+class CloseConfirmationModal(SafeModal):
     def __init__(self, thread: discord.Thread):
         super().__init__(title="Close Post Confirmation")
         self.thread = thread
@@ -236,14 +253,17 @@ class CloseConfirmationModal(discord.ui.Modal):
             )
             return
 
-        await interaction.response.send_message(
-            "🔒 This thread is now closed by its creator (no reviews received).",
-            ephemeral=False
+        # Someone may have closed it while the modal was open
+        if is_thread_closed(self.thread):
+            return await interaction.response.send_message("🔒 This post is already closed.", ephemeral=True)
+
+        await close_thread_for(
+            interaction, self.thread, "❌ Closed without reviews",
+            "🔒 This thread is now closed by its creator (no reviews received)."
         )
-        await close_thread(interaction.client, self.thread, "❌ Closed without reviews")
 
 
-class AdminCloseConfirmationModal(discord.ui.Modal):
+class AdminCloseConfirmationModal(SafeModal):
     def __init__(self, thread: discord.Thread, admin_user: discord.Member):
         super().__init__(title="Admin Close Post Confirmation")
         self.thread = thread
@@ -265,15 +285,21 @@ class AdminCloseConfirmationModal(discord.ui.Modal):
             )
             return
 
-        await interaction.response.send_message(
-            f"🔒 This thread has been closed by admin {self.admin_user.mention}.", ephemeral=False
-        )
-        await admin_close(interaction.client, self.thread, self.admin_user)
+        if is_thread_closed(self.thread):
+            return await interaction.response.send_message("🔒 This post is already closed.", ephemeral=True)
+
+        await admin_close(interaction, self.thread, self.admin_user)
 
 
-async def admin_close(client: discord.Client, thread: discord.Thread, admin_user: discord.Member) -> None:
+async def admin_close(interaction: discord.Interaction, thread: discord.Thread, admin_user: discord.Member) -> None:
     """Force-close a thread on behalf of an admin and log it."""
-    await close_thread(client, thread, f"❌ Force closed by admin {admin_user.mention}")
+    closed = await close_thread_for(
+        interaction, thread, f"❌ Force closed by admin {admin_user.mention}",
+        f"🔒 This thread has been closed by admin {admin_user.mention}."
+    )
+    if not closed:
+        return
+    client = interaction.client
 
     log_embed = discord.Embed(
         title="🔒 Admin Force Close",
@@ -291,7 +317,7 @@ def build_review_panel(op_id: int) -> discord.Embed:
     """Build the review panel embed summarising the thread owner's reputation."""
     config = load_config()
     rep_msgs = load_rep_messages()
-    no_rep_lines = config.get("no_rep_messages") or [DEFAULT_NO_REP_MESSAGE]
+    no_rep_lines = config["no_rep_messages"] or [DEFAULT_NO_REP_MESSAGE]
 
     avg_rating, total_reviews, latest_reviews = db.get_user_reviews(op_id)
     gif_url = None
@@ -310,7 +336,7 @@ def build_review_panel(op_id: int) -> discord.Embed:
         raw = random.choice(pool) if pool else ""
         # A trailing .gif/.mp4/.webm URL is shown as the embed image
         parts = raw.rsplit(" ", 1)
-        if len(parts) == 2 and parts[1].lower().endswith((".gif", ".mp4", ".webm")):
+        if len(parts) == 2 and parts[1].lower().endswith(IMAGE_EXTENSIONS):
             content, gif_url = parts[0], parts[1]
         else:
             content = raw
@@ -344,15 +370,25 @@ async def _has_spoken_in(thread: discord.Thread, user_id: int) -> bool:
     """True if the user has posted in the thread."""
     if db.has_participated(thread.id, user_id):
         return True
-    # Messages from before participation tracking existed: check recent history
-    async for msg in thread.history(limit=100):
-        if msg.author.id == user_id:
-            db.add_thread_participant(thread.id, user_id)
-            return True
-    return False
+
+    # Messages from before participation tracking existed: check recent
+    # history, but never so long that the review modal can't be shown in time
+    async def search_history() -> bool:
+        async for msg in thread.history(limit=100):
+            if msg.author.id == user_id:
+                return True
+        return False
+
+    try:
+        found = await asyncio.wait_for(search_history(), HISTORY_CHECK_TIMEOUT)
+    except (asyncio.TimeoutError, discord.HTTPException):
+        return False
+    if found:
+        db.add_thread_participant(thread.id, user_id)
+    return found
 
 
-class ReviewButtonView(discord.ui.View):
+class ReviewButtonView(SafeView):
     def __init__(self):
         # persistent across restarts
         super().__init__(timeout=None)
@@ -403,13 +439,10 @@ class ReviewButtonView(discord.ui.View):
 
         # 2) Admins closing someone else's post
         if is_user_admin and not is_owner:
-            if load_config().get("admin_close_confirmation", True):
+            if load_config()["admin_close_confirmation"]:
                 await interaction.response.send_modal(AdminCloseConfirmationModal(thread, interaction.user))
             else:
-                await interaction.response.send_message(
-                    f"🔒 This thread has been closed by admin {interaction.user.mention}.", ephemeral=False
-                )
-                await admin_close(interaction.client, thread, interaction.user)
+                await admin_close(interaction, thread, interaction.user)
             return
 
         # 3) The owner must confirm closing a post nobody reviewed
@@ -418,5 +451,4 @@ class ReviewButtonView(discord.ui.View):
             return
 
         # 4) Owner closing a reviewed post
-        await interaction.response.send_message("🔒 This thread is now closed by its creator.", ephemeral=False)
-        await close_thread(interaction.client, thread, "❌ Closed")
+        await close_thread_for(interaction, thread, "❌ Closed", "🔒 This thread is now closed by its creator.")

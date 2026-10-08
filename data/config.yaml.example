@@ -11,6 +11,11 @@
 #                    REQUIRED SETTINGS
 # ═══════════════════════════════════════════════════════════
 
+# Your server's ID (right-click the server icon → Copy Server ID).
+# Admin commands and admin rights only work in this server, so nobody can
+# make themselves an admin by inviting the bot to a server of their own.
+guild_id: 123456789012345678
+
 # Forum channels the bot manages (TOS prompt, reviews, auto-close).
 # Add more later with /channel_set.
 forums:
